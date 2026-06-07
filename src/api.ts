@@ -119,6 +119,10 @@ export interface SearchOptions {
    * configured `before`/`after`.
    */
   windowCurve?: WindowCurve;
+  /** Sub-line clip mode (N chars on each side of the matched span). */
+  clipChars?: number;
+  /** Typo-tolerant search via regex transform (skipped if pattern is regex-y). */
+  fuzzy?: boolean;
 }
 
 /** Public, harness-friendly node shape. Same as internal Node. */
@@ -304,8 +308,21 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
   const allNodes: Node[] = [];
   const seenLines = autoTuneApplied ? new Set<string>() : null;
 
+  // Fuzzy pattern transform (skipped if pattern already looks regex-y).
+  const effectivePattern = opts.fuzzy
+    ? (function () {
+        const pat = opts.pattern;
+        if (/[\\^$.()\[\]{}|*+?]/.test(pat)) return pat;
+        const chars = [...pat];
+        if (chars.length < 2) return pat;
+        return chars
+          .map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+          .join("[^\\n]{0,2}");
+      })()
+    : opts.pattern;
+
   for (const rs of resolved) {
-    for await (const match of runRg(opts.pattern, rs.source, rs.content, {
+    for await (const match of runRg(effectivePattern, rs.source, rs.content, {
       case_insensitive: opts.rg?.caseInsensitive,
       word_match: opts.rg?.word,
       fixed_strings: opts.rg?.fixedStrings,
@@ -323,7 +340,11 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
         seenLines.add(key);
       }
       const content = loadSourceContent(rs.source, rs.content);
-      const node = buildNode(match, content, { beforeTokens: before, afterTokens: after });
+      const node = buildNode(match, content, {
+        beforeTokens: before,
+        afterTokens: after,
+        clipChars: opts.clipChars,
+      });
       allNodes.push(node);
       if (allNodes.length >= maxNodes) break;
     }

@@ -88,6 +88,8 @@ export interface RawArgs {
   noAutoTune: boolean;
   sort?: SortMode;
   windowCurve?: WindowCurve;
+  clipChars?: number;
+  fuzzy: boolean;
   help: boolean;
   version: boolean;
 }
@@ -146,6 +148,16 @@ NODE SIZING
                             log: window = full / log2(rank+2). Gentler decay.
                             Combine with --sort recent for "rich context on
                             what just changed, tight window on older history."
+      --clip <N>            Sub-line clip mode. Drops line context; trims the
+                            matched line itself to N chars around the matched
+                            span (with ellipsis markers). Cheapest possible
+                            node — for disambiguation, not synthesis.
+                            Combine with --effort scan for a minimal index
+                            (~30 tokens per hit at N=20).
+      --fuzzy               Typo-tolerant search. Transforms a literal pattern
+                            so up to 2 extra chars may appear between each
+                            letter. Skipped if the pattern already looks like
+                            a regex. Pure plain-text patterns only.
                             Default is quick: small windows, small node cap.
                             "Scan first, dig deeper" is the recommended pattern
                             for agents — start with scan or quick; bump to
@@ -323,6 +335,7 @@ export function parseArgs(argv: string[]): RawArgs {
     ls: false,
     mpStashLocations: false,
     noAutoTune: false,
+    fuzzy: false,
     help: false,
     version: false,
   };
@@ -521,6 +534,15 @@ export function parseArgs(argv: string[]): RawArgs {
       }
       args.windowCurve = v as WindowCurve; i++; continue;
     }
+    if (a === "--clip") {
+      const v = requireValue(a, argv, ++i);
+      const n = parseInt(v, 10);
+      if (!Number.isFinite(n) || n < 0) {
+        throw new Error(`--clip must be a non-negative integer, got: ${v}`);
+      }
+      args.clipChars = n; i++; continue;
+    }
+    if (a === "--fuzzy") { args.fuzzy = true; i++; continue; }
     if (a === "--ls" || a === "--tree") { args.ls = true; i++; continue; }
     if (a === "--mp-stash-locations") { args.mpStashLocations = true; i++; continue; }
 
@@ -702,6 +724,8 @@ export function resolveConfig(raw: RawArgs): ResolvedConfig {
     auto_tune_eligible: !raw.noAutoTune && raw.before === undefined && raw.after === undefined,
     sort: raw.sort,
     window_curve: raw.windowCurve,
+    clip_chars: raw.clipChars,
+    fuzzy: raw.fuzzy,
   } as ResolvedConfig;
 }
 

@@ -17,6 +17,15 @@ export interface BuildNodeOptions {
   beforeTokens: number;
   afterTokens: number;
   tokens?: TokenModel;
+  /**
+   * Optional sub-line clip mode. When set, the node's match_text is
+   * trimmed to `line.slice(match_start - clipChars, match_end + clipChars)`
+   * (with ellipsis markers if anything was dropped). Pre/post context
+   * lines are also dropped entirely — clip mode means "just this
+   * snippet, nothing else." Use for the cheapest possible recall
+   * when you only need to disambiguate the match itself.
+   */
+  clipChars?: number;
 }
 
 /** Load the full content of a source. */
@@ -41,6 +50,35 @@ export function buildNode(
   options: BuildNodeOptions,
 ): Node {
   const model = options.tokens ?? defaultTokens;
+
+  // Sub-line clip mode: skip line-context entirely; clip the match line
+  // itself to a small window around the matched span. Cheapest possible
+  // node — used when the agent just needs to disambiguate matches, not
+  // read surrounding code.
+  if (typeof options.clipChars === "number" && options.clipChars >= 0) {
+    const N = options.clipChars;
+    const startChar = Math.max(0, match.match_start - N);
+    const endChar = Math.min(match.text.length, match.match_end + N);
+    const head = startChar > 0 ? "…" : "";
+    const tail = endChar < match.text.length ? "…" : "";
+    const clipped = head + match.text.slice(startChar, endChar) + tail;
+    // Re-anchor the match span to the clipped string.
+    const newStart = head.length + (match.match_start - startChar);
+    const newEnd = newStart + (match.match_end - match.match_start);
+    return {
+      id: 0,
+      source: match.source,
+      match_line: match.line,
+      start_line: match.line,
+      end_line: match.line,
+      context_before: [],
+      match_text: clipped,
+      context_after: [],
+      match_spans: [[newStart, newEnd]],
+      tokens: model.estimate(clipped),
+    };
+  }
+
   const allLines = content.split("\n");
 
   // Convert 1-indexed match line to 0-indexed array index.

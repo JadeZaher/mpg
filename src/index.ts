@@ -45,7 +45,25 @@ import { sampleMedianLineLength, WIDE_RECORD_MEDIAN_THRESHOLD } from "./api.js";
 import type { Node, ResolvedConfig, Result, Source } from "./types.js";
 import type { Stash } from "./mind-palace.js";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.3";
+
+/**
+ * Transform a literal pattern into a typo-tolerant regex by allowing
+ * up to 2 extra characters between each consecutive letter pair.
+ * `foo` becomes `f[^\n]{0,2}o[^\n]{0,2}o`. Cheap and effective for
+ * single-word lookups; for multi-word patterns the user should
+ * tokenize themselves (pass space-separated keywords and OR them).
+ */
+function fuzzyTransform(pat: string): string {
+  // Don't touch patterns that already look regex-y — too risky to
+  // transform something with anchors or character classes.
+  if (/[\\^$.()\[\]{}|*+?]/.test(pat)) return pat;
+  const chars = [...pat];
+  if (chars.length < 2) return pat;
+  return chars
+    .map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("[^\\n]{0,2}");
+}
 
 async function main(): Promise<number> {
   // 1. Parse + resolve config.
@@ -255,8 +273,11 @@ async function main(): Promise<number> {
 
   for (const rs of resolved) {
     try {
+      const effectivePattern = config.fuzzy
+        ? fuzzyTransform(config.pattern!)
+        : config.pattern!;
       for await (const match of runRg(
-        config.pattern!,
+        effectivePattern,
         rs.source,
         rs.content,
         config.rg_options,
@@ -271,6 +292,7 @@ async function main(): Promise<number> {
         const node = buildNode(match, content, {
           beforeTokens,
           afterTokens,
+          clipChars: config.clip_chars,
         });
         allNodes.push(node);
         sourcesSeen.add(rs.source.id);

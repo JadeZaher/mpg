@@ -133,6 +133,13 @@ export interface ResolvedConfig {
   sort?: SortMode;
   /** --window-curve flat|linear|log. Per-node window decay across ranks. */
   window_curve?: WindowCurve;
+  /**
+   * --clip <N>: sub-line clip mode. Drops line-level context; trims the
+   * matched line itself to N chars on each side of the matched span.
+   */
+  clip_chars?: number;
+  /** --fuzzy: typo-tolerant regex transform before passing to rg. */
+  fuzzy?: boolean;
 }
 
 export interface MindPalaceOps {
