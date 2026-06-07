@@ -201,11 +201,40 @@ async function main(): Promise<number> {
 
   // 4. If --mp-from / --mp-compose / --mp-except / --mp-intersect,
   // derive source list from the palace.
+  //
+  // When --mp-from or --mp-compose is combined with --mp-except, the
+  // base-set comes from from/compose and except's stash names are
+  // treated as exclude. This matches the documented and tested
+  // semantic: "files in <base> NOT in <excluded>".
   const mp = config.mind_palace;
   if (mp?.from || mp?.compose || mp?.except || mp?.intersect) {
     try {
       let palaceSources: Source[];
-      if (mp.from) {
+      if (mp.from && mp.except) {
+        // from minus the union of except's stashes (base + extras).
+        palaceSources = exceptToSources(
+          palace,
+          mp.from,
+          [mp.except.base, ...mp.except.exclude],
+        );
+      } else if (mp.compose && mp.except) {
+        // compose minus except. We pick any one of compose's stashes as
+        // the "base" arg (exceptToSources needs a single base), then
+        // post-filter against the full compose result.
+        const composed = composeToSources(palace, mp.compose);
+        const excludeNames = [mp.except.base, ...mp.except.exclude];
+        const excludeIds = new Set<string>();
+        for (const name of excludeNames) {
+          const s = palace.stashes[name];
+          if (!s) {
+            throw new Error(
+              `Unknown stash: ${name}. Run 'mdg --mp-list' to see available stashes.`,
+            );
+          }
+          for (const src of s.sources) excludeIds.add(src);
+        }
+        palaceSources = composed.filter((s) => !excludeIds.has(s.id));
+      } else if (mp.from) {
         palaceSources = composeToSources(palace, [mp.from]);
       } else if (mp.compose) {
         palaceSources = composeToSources(palace, mp.compose);
