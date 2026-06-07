@@ -81,6 +81,8 @@ export interface Result {
   after_tokens: number;
   max_nodes: number;
   max_tokens?: number;
+  /** True when the wide-record auto-tune shrank before/after to 0. */
+  auto_tune_applied?: boolean;
   /** Shorthand status so LLMs can branch on outcome without parsing text. */
   status: ResultStatus;
   /** Token count of the actual nodes returned (after pagination).
@@ -116,6 +118,15 @@ export interface ResolvedConfig {
   ls: boolean;
   /** --mp-stash-locations: stash locations only (no context text). */
   mp_stash_locations: boolean;
+  /** --no-auto-tune: disable wide-record corpus detection. */
+  no_auto_tune: boolean;
+  /**
+   * True iff the user did not pass explicit --before/--after AND
+   * --no-auto-tune was not set. The orchestrator uses this together
+   * with a runtime sample of the resolved sources to decide whether
+   * to drop before/after to 0 for wide-record corpora.
+   */
+  auto_tune_eligible: boolean;
 }
 
 export interface MindPalaceOps {

@@ -82,6 +82,8 @@ export interface RawArgs {
   all: boolean;
   ls: boolean;
   mpStashLocations: boolean;
+  // Wide-record auto-tune opt-out.
+  noAutoTune: boolean;
   help: boolean;
   version: boolean;
 }
@@ -292,6 +294,7 @@ export function parseArgs(argv: string[]): RawArgs {
     all: false,
     ls: false,
     mpStashLocations: false,
+    noAutoTune: false,
     help: false,
     version: false,
   };
@@ -475,6 +478,7 @@ export function parseArgs(argv: string[]): RawArgs {
     if (a === "--page") { args.page = parseInt(requireValue(a, argv, ++i), 10); i++; continue; }
     if (a === "--page-size") { args.pageSize = parseInt(requireValue(a, argv, ++i), 10); i++; continue; }
     if (a === "--all") { args.all = true; i++; continue; }
+    if (a === "--no-auto-tune") { args.noAutoTune = true; i++; continue; }
     if (a === "--ls" || a === "--tree") { args.ls = true; i++; continue; }
     if (a === "--mp-stash-locations") { args.mpStashLocations = true; i++; continue; }
 
@@ -652,6 +656,8 @@ export function resolveConfig(raw: RawArgs): ResolvedConfig {
     all: raw.all,
     ls: raw.ls,
     mp_stash_locations: raw.mpStashLocations,
+    no_auto_tune: raw.noAutoTune,
+    auto_tune_eligible: !raw.noAutoTune && raw.before === undefined && raw.after === undefined,
   } as ResolvedConfig;
 }
 
