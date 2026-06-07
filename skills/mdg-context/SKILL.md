@@ -2,11 +2,13 @@
 name: mdg-context
 description: >
   Token-budgeted codebase search with composable short-term memory.
-  Search files, command output, and URLs for regex patterns. Returns
-  context nodes sized in tokens (not lines) with file:line attribution.
-  Supports effort presets (quick/normal/deep), pagination, and a
-  persistent mind palace of named stashes that can be composed, linked
-  with relationships, pruned by age/tag/count, and traversed as a graph.
+  Search files, command output, and URLs for regex patterns; results
+  return as context nodes sized in tokens (not lines) with file:line
+  attribution. Persistent "mind palace" of named stashes can be
+  composed, intersected, linked into a graph, pruned by age/tag/count,
+  and traversed. Three integration paths: MCP server (Claude Desktop,
+  Claude Code, Cline, Windsurf), CLI shell-out (any agent), and
+  programmatic import (Anthropic / Google SDKs).
   Use for codebase exploration, multi-step investigation, finding
   references, and building cross-invocation working memory.
 tools:
@@ -23,174 +25,91 @@ install:
 
 # mdg-context — Codebase Context Retrieval Skill
 
-## Quick Start (1-2 commands)
+## Quick start
 
 ```bash
-# Install globally:
-npm install -g mdg-cli
-
-# Verify:
-mdg --version   # should print "mdg 0.2.0"
-mdg --ls         # should list files in the current directory
+npm install -g mdg-cli && mdg --version
 ```
 
-If the above fails, install from source:
-```bash
-git clone https://github.com/JadeZaher/mdg.git && cd mdg && npm install && npm run build && npm link
-```
+If running through an MCP-capable host (Claude Desktop, Claude Code,
+Cline, Windsurf, Continue.dev), the five tools below register
+automatically once the `mdg` MCP server is configured.
 
-## Description
-
-Retrieve token-budgeted context nodes from files, command output, and URLs.
-Use for: codebase exploration, multi-step investigation, finding references,
-building composable short-term memory across tool-call turns.
-
-## When to use this skill
+## When to use
 
 | Situation | Tool |
 | :--- | :--- |
-| "Where is X referenced in the codebase?" | `mdg_search` |
-| "I need context around a match, not just the line" | `mdg_search` with `before`/`after` |
-| "Is this term present at all? Quick scan." | `mdg_search` with `effort: "quick"` |
-| "I need deep context for my final answer" | `mdg_search` with `effort: "deep"` |
-| "I'll need these results again later" | `mdg_stash` |
-| "Search only in files I previously stashed" | `mdg_search` with `from` or `compose` |
-| "Show me what stashes I have" | `mdg_list_stashes` |
-| "Don't need this stash anymore" | `mdg_drop_stash` |
-| "Just read a single file" | Use `read` tool instead (faster) |
-| "Search a URL or command output" | `mdg_search` with `url` or `cmd` |
+| "Where is X referenced?" | `mdg_search` |
+| "Need context around a match" | `mdg_search` (`before`/`after`) |
+| "Quick scan — is this term here at all?" | `mdg_search` (`effort: "quick"`) |
+| "Deep context for a final answer" | `mdg_search` (`effort: "deep"`) |
+| "I'll need these hits again later" | `mdg_stash` |
+| "Search only files I previously stashed" | `mdg_search` (`from` or `compose`) |
+| "What stashes do I have?" | `mdg_list_stashes` |
+| "Forget this stash" | `mdg_drop_stash` |
+| "Just read one file" | use the host's read tool — mdg is for *searching* |
+| "Search a URL or command output" | `mdg_search` (`url` or `cmd`) — see `references/sources.md` |
 
-## Decision tree: what effort level to use
+## Effort presets
 
-```
-Surface scan needed?    → effort: "quick"   (200 token windows, 10 nodes)
-Default investigation?  → effort: "normal"  (500 token windows, 30 nodes)
-Final answer grounding? → effort: "deep"    (2000 token windows, 100 nodes)
-Unknown?                → effort: "auto"    (fallback, same as normal)
-```
+| effort | before | after | max_nodes | use case |
+| :--- | ---: | ---: | ---: | :--- |
+| quick  |   200 |   200 |     10 | Initial recon |
+| normal |   500 |   500 |     30 | Default investigation |
+| deep   |  2000 |  2000 |    100 | Final-answer grounding |
+| auto   |   500 |   500 |     30 | Same as normal (future: heuristic) |
 
-## Decision tree: how to use the mind palace (short-term memory)
+## The five MCP tools (signatures only)
 
-```
-BUILD UP memory across turns:
-  1. Search & stash: mdg_search → mdg_stash(name, note, tags)
-  2. Browse stashes:  mdg_list_stashes → decide what's relevant
-  3. Compose stashes: mdg_search(compose: [a, b]) to cross-reference
-  4. Re-search scoped: mdg_search(from: name) to re-query within a stash
-  5. Free memory:     mdg_drop_stash(name) when a slot is no longer needed
+| Tool | Required params | Optional |
+| :--- | :--- | :--- |
+| `mdg_search` | `pattern` | `in[]`, `cmd`, `url`, `before`, `after`, `max_nodes`, `max_tokens`, `effort`, `strategy`, `from`, `compose[]`, `page`, `page_size`, `all` |
+| `mdg_stash` | `name` | `note`, `tags[]`, `replace` |
+| `mdg_list_stashes` | — | `tag_filter[]`, `page`, `page_size` |
+| `mdg_get_stash` | `name` | `page`, `page_size` |
+| `mdg_drop_stash` | `name` | — |
 
-PRUNE stale memory:
-  - mdg_prune_older_than("7d") — remove stashes older than 7 days
-  - mdg_prune_keep(10) — keep only the 10 most recent
-  - mdg_prune_tag("temp") — remove all temp-tagged stashes
-  - mdg_prune_dry_run before any destructive prune
-  - Use --mp-ttl (e.g. "2h", "30m") when creating ephemeral stashes
+The mind palace has a *wider* surface than the five MCP tools above
+(relationships, pruning, TTL, intersect/except, isolated palaces).
+Those are CLI-only today — see `references/mind-palace.md`.
 
-GOLDEN RULES:
-  - Stash by default. Even if you think you won't need it, stash it.
-  - Tag stashes: "auth", "p0", "temp", "perf", "review". This pays off
-    when you have 10+ stashes and need to filter or prune.
-  - Compose before you conclude.
-  - Drop or prune when done. Stashes are persistent on disk.
-  - Use --mp-ttl for ephemeral stashes (e.g. "2h", "30m").
-  - Prune old stashes regularly: --mp-prune-older-than 7d.
-  - Create relationships: --mp-link <a> <b> depends-on "note".
-  - Traverse the graph: --mp-graph <name> 3 to see the dependency chain.
-  - Always --mp-prune-dry-run before a destructive prune.
-  - Use separate palaces per task.
-```
+## Golden rules
+
+1. **Stash by default.** Even if you think you won't reuse it. Stashes are cheap.
+2. **Tag every stash.** `auth`, `p0`, `temp`, `perf`, `review` — pays off at >10 stashes.
+3. **Compose before concluding.** Set-union across two stashes catches cross-cutting evidence one search would miss.
+4. **One palace per task.** Pass `--mp-path` or set `MDG_MIND_PALACE` per task to keep contexts isolated.
+5. **Always dry-run prunes.** `--mp-prune-dry-run` first, commit second.
+6. **Page large results.** Pass `page: 1, page_size: 5` for searches with >10 expected hits; check `pagination.has_next`.
 
 ## Pagination pattern
 
 ```
-Start:  mdg_search(pattern, page: 1, pageSize: 5)
+Start:  mdg_search(pattern, page: 1, page_size: 5)
 Check:  result.pagination.has_next
-If has_next:  mdg_search(pattern, page: 2, pageSize: 5)
-...
+If yes: mdg_search(pattern, page: 2, page_size: 5)
 Stop when has_next is false or you have enough context.
-
-The same pattern works for mdg_list_stashes and mdg_get_stash.
 ```
 
-## Error recovery hints
+Same pattern for `mdg_list_stashes` and `mdg_get_stash`.
 
-| Exit code / condition | What to do |
+## Error recovery
+
+| Condition | What to do |
 | :--- | :--- |
-| `status: "no_matches"` | No hits. Try broader pattern, remove `-w`, add `-I` for case-insensitive. |
-| `status: "truncated"` | Hit --max-tokens budget. Narrow the search (more specific pattern) OR increase max_tokens and re-run. |
-| `status: "error"` | Check stderr for details. Common: unknown stash name (run --mp-list), rg not installed, bad regex. |
-| `pagination.has_next === true` | There's more data. Decide if you need to page, or if the current page is sufficient. |
-| No matches on `--mp-from` | The stash's files may have changed. Re-stash with a fresh search. |
-| Unknown stash error | Run `mdg_list_stashes` to see what's available. |
+| `status: "no_matches"` | Broaden pattern, drop `-w`, add `-I` (case-insensitive). |
+| `status: "truncated"` | Hit `--max-tokens`. Narrow pattern OR increase budget. |
+| `status: "error"` | Check stderr. Common: unknown stash name (`mdg_list_stashes`), rg not installed, bad regex. |
+| Unknown stash | Run `mdg_list_stashes` to discover. |
+| `pagination.has_next` | More data exists. Decide if current page is enough. |
+| `--mp-from` returns nothing | Stashed files may have moved or been deleted. Re-stash fresh. |
 
-## Integration with other Pi skills
+## Read further (load on demand)
 
-- **extension-orchestrator (Pi-Horizon)**: mdg is a Grounding tool. Use it in
-  the Grounding phase to understand the codebase before planning.
-- **conductor-context**: If a conductor/ directory exists, use mdg to find
-  references to task IDs, track names, or phase names across the codebase.
-- **deep-research**: After fetching a URL, use mdg to search the fetched content.
-- **batch-task-master**: Use mdg to find all instances of a pattern before
-  running a mass refactoring.
-- **subagent (scout)**: mdg complements the scout agent. Scout does unstructured
-  exploration; mdg does structured, token-budgeted retrieval.
+When you need depth on one of these areas, read the matching file:
 
-## Capabilities exposed as MCP tools / function calls
-
-### mdg_search
-```
-Search files, command output, or URLs for a regex pattern.
-Returns token-budgeted context nodes with file:line attribution.
-Query params: pattern (required), in (paths[]), cmd, url,
-  before, after, max_nodes, max_tokens, effort, strategy,
-  from (stash name), compose (stash names[]), page, page_size, all
-```
-
-### mdg_stash
-```
-Save a search result to the mind palace under a named slot.
-Stashes are addressable: other searches can use them as input
-via mdg_search(from: name) or mdg_search(compose: [a, b]).
-Query params: name (required), note, tags[], replace
-```
-
-### mdg_list_stashes
-```
-List all stashes in the mind palace. Optionally filter by tag.
-Query params: tag_filter[], page, page_size
-Returns: array of { name, note, tags, pattern, effort, nodes_count, sources_count, updated_at }
-```
-
-### mdg_get_stash
-```
-Show the full contents of one stash.
-Query params: name (required), page, page_size
-Returns: { name, note, tags, nodes[], sources[], created_at, updated_at }
-```
-
-### mdg_drop_stash
-```
-Remove a stash from the mind palace.
-Query params: name (required)
-```
-
-## Anti-patterns: what NOT to do
-
-- **Don't use deep effort for a quick scan.** Quick is 1/10th the cost.
-- **Don't stash and then immediately drop.** Stashes are cheap storage.
-- **Don't search for the same pattern twice without stashing.** Stash it the first time.
-- **Don't use mdg to read a single file.** Use the `read` tool. mdg is for searching.
-- **Don't forget to pass `page: 1` to paginate.** Without it, you get everything at once.
-- **Don't use comma-separated stash names in compose without quoting.**
-- **Don't create stashes with names that collide with flags.** Avoid names
-  that look like `--help`, `-v`, etc. (mdg handles these but the LLM
-  shouldn't create confusion.)
-
-## Quick reference: effort presets
-
-| effort | before | after | max_nodes | use case |
-| :--- | ---: | ---: | ---: | :--- |
-| quick  |   200 |   200 |     10 | Initial recon, "is this term in the codebase?" |
-| normal |   500 |   500 |     30 | Default investigation |
-| deep   |  2000 |  2000 |    100 | Final-answer grounding |
-| auto   |   500 |   500 |     30 | Fallback |
+- `references/integration.md` — MCP server vs CLI vs programmatic SDK import; when to prefer each.
+- `references/mind-palace.md` — full mind palace surface: relationships, pruning, TTL, set ops (`compose`/`except`/`intersect`), graph traversal, multi-palace isolation.
+- `references/sources.md` — search files, dirs, globs, command stdout (`--cmd`), URLs (`--url`), stdin (`--stdin`); `--include`/`--exclude`/`--type` filters.
+- `references/multi-agent.md` — palace sharing across agents, write-write race caveats, recommended layouts.
+- `references/anti-patterns.md` — full list of what NOT to do and why.

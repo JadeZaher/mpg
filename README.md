@@ -10,6 +10,178 @@ and you can cap the **number of nodes** and the **total token budget**
 independently. The depth of context is adjusted by `effort` rather than by
 blindly loading more text.
 
+## Command reference
+
+Every flag, grouped by category. The shape of every command is:
+
+```
+mdg [<pattern>] [options]
+```
+
+`<pattern>` is a ripgrep regex (or a literal string with `-F`). It is
+required for searches and stash-producing operations, and omitted for
+pure palace operations (`--mp-list`, `--mp-get`, `--mp-drop`, `--mp-link`,
+`--mp-related`, `--mp-graph`, `--mp-prune-*`, `--ls`).
+
+### Sources — where to search
+
+| Flag | Example | What it does |
+| :--- | :--- | :--- |
+| `-i, --in <path>...` | `mdg "TODO" --in src/ test/` | One or more files, dirs, or globs. Greedy: consumes non-flag args. Dirs recurse. |
+| `--in @<file>` | `mdg "TODO" --in @files.txt` | Read path list from a file (one per line, `#` comments). |
+| `--in @-` | `ls *.ts \| mdg "TODO" --in @-` | Read path list from stdin. |
+| `--in a,b,c` | `mdg "TODO" --in src/,test/` | Comma-separated path list. |
+| trailing paths | `mdg "TODO" src/ test/` | rg-style positionals; equivalent to `--in`. |
+| `--cmd <cmd>` | `mdg "error" --cmd "git log --oneline -100"` | Search the stdout of a shell command. |
+| `--stdin` | `cat README.md \| mdg "install"` | Search piped stdin (auto-detected when piped). |
+| `-u, --url <url>` | `mdg "deprecated" -u https://example.com/docs` | Fetch URL body and search it. |
+
+### Node sizing — control context width and density
+
+| Flag | Example | What it does |
+| :--- | :--- | :--- |
+| `-b, --before <tokens>` | `--before 800` | Tokens of context before each match. Default: 500. |
+| `-a, --after <tokens>` | `--after 800` | Tokens of context after each match. Default: 500. |
+| `-n, --max-nodes <n>` | `--max-nodes 20` | Hard cap on nodes returned. Default: 30. |
+| `--max-tokens <n>` | `--max-tokens 8000` | Total token budget across all nodes. |
+| `--strategy fill\|deep` | `--strategy deep` | Spend `--max-tokens` on more nodes (`fill`) or deeper per node (`deep`). |
+| `-e, --effort <preset>` | `--effort quick` | Preset bundles: `quick` (200t/10n), `normal` (500t/30n), `deep` (2000t/100n), `auto`. |
+
+### Output
+
+| Flag | Example | What it does |
+| :--- | :--- | :--- |
+| `-f, --format <fmt>` | `--format json` | `llm` (default), `markdown`, `json`, `text`. |
+| `--color` / `--no-color` | `--no-color` | Force or disable ANSI color. Auto by default. |
+
+### Search options (forwarded to ripgrep)
+
+| Flag | Example | What it does |
+| :--- | :--- | :--- |
+| `-I, --ignore-case` | `-I` | Case-insensitive match. |
+| `-w, --word` | `-w` | Match whole words only. |
+| `-F, --fixed-strings` | `-F` | Treat pattern as a literal string, not a regex. |
+| `-U, --multiline` | `-U` | Allow patterns to span lines. |
+| `--hidden` | `--hidden` | Include hidden files and dirs. |
+| `--no-ignore` | `--no-ignore` | Don't respect `.gitignore`. |
+| `--include <glob>` | `--include '*.ts'` | Only files matching glob (repeatable). |
+| `--exclude <glob>` | `--exclude '*.test.ts'` | Skip files matching glob (repeatable). |
+| `--type <lang>` | `--type ts` | ripgrep file-type filter (`ts`, `rust`, `py`, ...). |
+
+### Pagination
+
+| Flag | Example | What it does |
+| :--- | :--- | :--- |
+| `--page <n>` | `--page 1` | Return only the Nth page (1-indexed). Paginates nodes (search / `--mp-get`) or stashes (`--mp-list`). |
+| `--page-size <n>` | `--page-size 5` | Items per page. Defaults: 10 for nodes, 20 for stashes. |
+| `--all` | `--all` | Disable pagination, return everything. |
+
+### Mind palace — instantiable short-term memory
+
+A palace is a JSON file (default `./.mdg/mind-palace.json`) that holds
+named **stashes** of search results. Stashes are addressable: future
+searches can use them as inputs.
+
+| Flag | Example | What it does |
+| :--- | :--- | :--- |
+| `--mp-stash <name> <note>` | `mdg "TODO" --in src/ --mp-stash auth "Auth TODOs"` | Run the search, save the result under `name`. Merges into an existing stash; pass `--mp-replace` to overwrite. |
+| `--mp-stash-note <note>` | `--mp-stash-note "extra context"` | Set the note separately. |
+| `--mp-stash-tag <tag>` / `--mp-tag <tag>` | `--mp-tag p0 --mp-tag auth` | Tag a stash (repeatable). |
+| `--mp-replace` | `--mp-replace` | Overwrite an existing stash rather than merging. |
+| `--mp-ttl <duration>` | `--mp-ttl 2h` | Auto-expire this stash after the duration (e.g. `30m`, `2h`, `7d`). |
+| `--mp-list` | `mdg --mp-list` | List all stashes (with relative timestamps). |
+| `--mp-list-tag <tag>` | `mdg --mp-list --mp-list-tag p0` | Filter list by tag (repeatable). |
+| `--mp-get <name>` | `mdg --mp-get auth` | Show the full contents of one stash. |
+| `--mp-drop <name>` | `mdg --mp-drop auth` | Remove a stash. |
+| `--mp-from <name>` | `mdg "rate.limit" --mp-from auth` | Re-run a fresh search, scoped to the files in a stash. |
+| `--mp-compose <a> <b>...` | `mdg "error" --mp-compose auth perf` | Run a search across the **union** of multiple stashes' files. |
+| `--mp-except <a>` / `--mp-except <a> <b>...` | `mdg "TODO" --mp-except deprecated` | Search files NOT in the listed stash(es). |
+| `--mp-intersect <a> <b>...` | `mdg "TODO" --mp-intersect auth perf` | Search files in **all** the listed stashes (set intersection). |
+| `--mp-path <file>` | `--mp-path .mdg/task-42.json` | Use an isolated palace file. Also: `MDG_MIND_PALACE` env var. |
+| `--mp-stash-locations` | `--mp-stash-locations` | Save only file:line pointers, drop context text (lean stashes). |
+
+### Pruning — keep the palace from growing unbounded
+
+| Flag | Example | What it does |
+| :--- | :--- | :--- |
+| `--mp-prune-older-than <dur>` | `--mp-prune-older-than 7d` | Remove stashes not updated within the duration. |
+| `--mp-prune-keep <n>` | `--mp-prune-keep 10` | Keep only the N most recently updated stashes. |
+| `--mp-prune-tag <tag>` | `--mp-prune-tag temp` | Remove all stashes carrying the tag. |
+| `--mp-prune-expired` | `--mp-prune-expired` | Remove stashes whose `--mp-ttl` has elapsed. |
+| `--mp-prune-all` | `--mp-prune-all --mp-prune-confirm` | Clear the entire palace. `--mp-prune-confirm` required. |
+| `--mp-prune-dry-run` | `--mp-prune-older-than 7d --mp-prune-dry-run` | Show what *would* be pruned, don't delete. **Use this first.** |
+
+### Relationships — make the *graph* in markdowngraphcli real
+
+| Flag | Example | What it does |
+| :--- | :--- | :--- |
+| `--mp-link <from> <to> <type> [note]` | `mdg --mp-link auth perf depends-on "shared db"` | Create a directed edge. Types: `depends-on`, `related-to`, `see-also`, `parent-of`, `child-of`, `supersedes`, or any custom string. |
+| `--mp-unlink <from> <to>` | `mdg --mp-unlink auth perf` | Remove a relationship. |
+| `--mp-related <name>` | `mdg --mp-related auth` | Show all stashes connected to `name` (inbound + outbound). |
+| `--mp-graph <name> [depth]` | `mdg --mp-graph auth 3` | Traversal graph from `name` up to `[depth]` (default 3). |
+
+### Discovery & meta
+
+| Flag | Example | What it does |
+| :--- | :--- | :--- |
+| `--ls` / `--tree` | `mdg --ls --in src/` | List/tree all searchable files under the given paths and exit. |
+| `-h, --help` | `mdg --help` | Show inline help. |
+| `-v, --version` | `mdg --version` | Print version. |
+
+### Environment variables
+
+| Variable | Effect |
+| :--- | :--- |
+| `MDG_MIND_PALACE` | Override default palace path (`./.mdg/mind-palace.json`). |
+| `MDG_PATTERN` | Default pattern if none is passed positionally. |
+
+### Common recipes (copy-paste)
+
+```bash
+# Quick recon
+mdg "auth" --in . --effort quick --max-nodes 5
+
+# Deep grounding for a final answer
+mdg "session" --in src/auth/ --effort deep --max-tokens 16000
+
+# Stash + tag + TTL
+mdg "TODO" --in src/auth/ --mp-stash auth-todos "Auth TODOs" \
+  --mp-tag auth --mp-tag p0 --mp-ttl 7d
+
+# Compose two stashes, re-search across their union
+mdg "error" --mp-compose auth-todos perf-hotspots
+
+# Re-search scoped to one stash's files
+mdg "rate.limit" --mp-from auth-todos
+
+# Link stashes into a graph, then traverse it
+mdg --mp-link auth-todos perf-hotspots depends-on "shared db layer"
+mdg --mp-graph auth-todos 3
+
+# Prune safely
+mdg --mp-prune-older-than 7d --mp-prune-dry-run     # preview
+mdg --mp-prune-older-than 7d                        # commit
+
+# Use an isolated palace for one task
+MDG_MIND_PALACE=./.mdg/task-42.json mdg "TODO" --in src/ --mp-stash t42 "..."
+
+# Programmatic JSON for a harness
+mdg "TODO" --in src/ --format json --page 1 --page-size 5
+```
+
+### Exit codes
+
+| Code | Meaning |
+| ---: | :--- |
+| 0 | Matches found (or palace operation succeeded) |
+| 1 | No matches (matches ripgrep's convention) |
+| 2 | Bad arguments |
+| 3 | ripgrep not installed |
+| 4 | Mind palace error (unknown stash, etc.) |
+| 99 | Unexpected error |
+
+---
+
 ## Why
 
 Most context tools are file-centric (`@filename`) or line-centric
