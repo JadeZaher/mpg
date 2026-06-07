@@ -1,0 +1,21 @@
+{
+  "active": true,
+  "mode": "ultrapilot-with-pivot",
+  "task": "macro bench tier — agent task lift on a code+specs corpus",
+  "branch": "bench",
+  "starting_commit": "24150b9",
+  "phase": "redirected_corpus",
+  "pivot_note": "user redirected: corpus is fractalengine (specs + code), not Claude JSONL. Tasks: browse specs and code, find specific chunks of content. mdg's value: smaller node windows + pagination + stashing => finer-grained context than read+grep on whole files.",
+  "corpus": {
+    "root": "C:/Users/atooz/Programming/fractalengine-workspace/fractalengine",
+    "specs": "conductor/tracks/<track>/{spec.md,plan.md,metadata.json}",
+    "code": "fe-*/src/**/*.rs",
+    "docs": "docs/**/*.md, AGENTS.md, BUILDING.md"
+  },
+  "workers": [
+    {"id": "w1", "status": "running", "files": ["bench/macro/agent/**"], "task": "agent harness — corpus-agnostic, still valid"},
+    {"id": "w2", "status": "coordinator-handles", "files": ["bench/macro/tasks/**", "bench/macro/run.ts"], "task": "fractalengine task specs + driver"},
+    {"id": "w3", "status": "coordinator-handles", "files": ["bench/aggregate.ts (macro section)", "bench/macro/README.md"], "task": "aggregator + README"}
+  ],
+  "shared_files": ["package.json"]
+}

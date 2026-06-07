@@ -1,96 +1,107 @@
-# Macro: agent task lift (scaffold + methodology)
+# Macro — agent task lift
 
-This is the only benchmark that tells you whether mdg actually helps
-real work. It is also the most expensive and the only one that needs
-external infrastructure (Docker, the SWE-bench harness, model API keys,
-a test-of-record).
+The only tier that measures the actual product question: **does an agent
+with mdg tools complete tasks at lower token cost than the same agent
+without them?** On the workload that matches mdg's pitch.
 
-## What "task lift" means
+## The workload (matters)
 
-Run the same agent harness against the same task set, twice:
+The conversational tier showed mdg ties rg on JSONL. That's a fair
+result on rg's home turf. The macro tier instead runs on a **code +
+specs** corpus — the workload mdg was actually designed for:
 
-1. **Control** — agent has built-in tools only (read, grep, write,
-   bash). No mdg.
-2. **Treatment** — same agent, same model, same budget, plus mdg MCP
-   tools registered.
+- Long-form source code (line-based, where context windows matter)
+- Long-form design docs / specs (where matches need surrounding prose to answer)
+- Plans, READMEs, AGENTS.md guides
 
-Score each task with a binary did-it-pass-the-hidden-tests metric. Lift
-is `pass_rate(treatment) - pass_rate(control)`. Secondary metrics:
+Concretely: the **FractalEngine workspace** at
+`C:/Users/atooz/Programming/fractalengine-workspace/fractalengine`,
+which contains:
 
-- mean total tokens per task (less is better)
-- mean wall-clock per task
-- mean tool calls per task
+- 42 conductor tracks (each with `spec.md`, `plan.md`, `metadata.json`)
+- ~267 Rust source files under `fe-*/src/**`
+- Docs, AGENTS.md, BUILDING.md
 
-A 5-point lift on pass-rate at the same or lower token cost is the
-result that justifies recommending mdg. Anything less is a wash.
+This is the kind of corpus an agent actually browses to answer
+questions like "what does the bloom_stage track propose?" or "where is
+the asset pipeline hashing scheme defined?"
 
-## Task sets
+## The hypothesis
 
-Pick one — don't try to do all three at once.
+The treatment-arm agent uses mdg to retrieve small, paginated,
+token-budgeted nodes. The control-arm agent has only `read`, `grep`,
+`write`, `bash`. On the same code+specs corpus, treatment should:
 
-### SWE-bench Lite (recommended baseline)
+- Answer at least as many tasks correctly (pass-rate at parity or better)
+- Spend **fewer input tokens** doing it (mdg's budget caps prevent
+  the "read whole 940-line plan to answer one keyword question" pattern)
 
-- 300 real GitHub issues from 12 popular Python projects, with hidden
-  unit tests.
-- Public harness: https://www.swebench.com/
-- Lite subset (~25% of full) is cheap enough for a few-hour run.
-- Pro: every result is comparable to published numbers for other
-  agentic tools.
-- Con: Python-only, repo-bound, doesn't exercise mdg's `--cmd` / `--url`
-  source types.
+If treatment matches control on pass-rate at meaningfully lower input
+tokens, mdg's value proposition is validated.
 
-### Curated GitHub issues (your own projects)
+## What's measured
 
-- 30 hand-picked closed issues from JadeZaher/* repos.
-- Ground truth = the actual merged fix.
-- Pro: matches the kinds of tasks you actually do; multi-language; can
-  include `--cmd` / `--url` queries.
-- Con: not comparable to anything external; needs hand-grading.
+| Metric | Why |
+| :--- | :--- |
+| `pass_rate` per arm | Did the answer contain the expected phrases? |
+| `mean_input_tokens` | The dominant cost in agent runs |
+| `mean_output_tokens` | Secondary cost; reveals reasoning verbosity |
+| `mean_tool_calls` | Did mdg let the agent ask fewer, sharper questions? |
+| `mean_turns` | Did the agent converge faster? |
+| `mean_ms` | Wall-clock, mostly informational |
+| **lift** = treatment − control | The headline number |
 
-### Synthetic multi-step recall
+## Tasks
 
-- A scripted multi-turn task where the agent has to:
-  1. Find a pattern across the codebase.
-  2. Stash it.
-  3. In a later turn, recall it without re-searching.
-  4. Compose with a second pattern.
-  5. Produce a final answer that requires both.
-- Pro: directly stress-tests mdg's memory contribution.
-- Con: synthetic — doesn't tell you about real-world ergonomics.
+`bench/macro/tasks/tasks.ts` defines 5 hand-labeled goal-content tasks
+where the agent must find and synthesize specific chunks of content:
 
-## What goes in this directory
+1. **T1**: Entity hierarchy from the bloom_stage spec
+2. **T2**: Asset addressing scheme (one keyword)
+3. **T3**: Function name that loads assets into Bevy
+4. **T4**: Camera type used before bloom_stage
+5. **T5**: Names of code-review tracks dated 2026-04-30
 
-When implemented, this folder should contain:
+Each task's success is checked by substring match against the agent's
+final answer text (`scoreAnswer` in `tasks.ts`). Pass = every required
+phrase group matched.
 
-- `runner.ts` — driver that boots two agents (control + treatment) per
-  task, collects logs, scores.
-- `agent/` — minimal agent harness (tool loop, model adapter). Could
-  use Anthropic SDK directly so it's reproducible.
-- `tasks/` — task set definitions. For SWE-bench, this is a thin
-  pointer to the upstream `swebench` package.
-- `score.ts` — pass-rate + token + wall-clock aggregator.
-- `results/` — per-run JSON, one per (task, condition) cell.
+## Running
 
-## Cost guardrails
+```bash
+export ANTHROPIC_API_KEY=...
+npm run bench:macro
+```
 
-- **Cap tokens per task.** A 30-task run × 2 conditions × 50k tokens
-  cap is 3M tokens. At Sonnet pricing that's a few dollars.
-- **Pin the model.** Use a single model ID throughout a run. Don't
-  compare runs across model versions.
-- **Set a wall-clock cap per task** (e.g. 5 min). Agents that loop
-  burn the budget.
-- **Save intermediate state.** Re-running a failed task is cheap;
-  re-running the whole sweep isn't.
+Without an API key, the bench writes a `status: "skipped"` record and
+exits 0 — safe to keep in `npm run bench`.
 
-## When to run this
+Budget guards per run: ≤20 turns, ≤50,000 input tokens, model defaults
+to `claude-haiku-4-5-20251001` (override via `MDG_BENCH_MODEL`).
 
-- Before publishing a new mdg version with a behavioral change.
-- After a meaningful skill prompt rewrite (the skill *is* part of the
-  treatment — changing it changes the result).
-- Before recommending mdg as a default in someone else's harness.
+## What success looks like
 
-## Until then
+A defensible pass-rate parity with negative input-token lift, e.g.:
 
-The micro + meso benchmarks tell you nothing about real-world lift,
-but they do catch regressions cheaply. Run those on every commit.
-Run macro quarterly or before a release.
+```
+| arm       | pass rate | mean in tokens | mean tool calls |
+| control   | 100%      | 8,400          | 4.2             |
+| treatment | 100%      | 3,100          | 3.1             |
+lift: pass-rate +0%, input tokens −63%
+```
+
+That's the number that justifies adopting mdg as default working memory
+for code-browsing agents.
+
+## What this bench does NOT measure (and what would)
+
+- **Multi-session memory recall**: tasks are single-turn. mdg's mind
+  palace persists, but here we don't validate that an agent that
+  stashed during turn N benefits in turn N+10. Adapting LoCoMo /
+  LongMemEval is the right next step.
+- **Pre-existing palace**: tasks start with an empty palace. The real
+  pitch of named memory is reusing prior work; that's a separate bench.
+- **Semantic recall**: every task here has a keyword that exists
+  verbatim in the corpus. A "what was the design intent behind X"
+  task that has no literal keyword would surface embedding strengths
+  more cleanly.

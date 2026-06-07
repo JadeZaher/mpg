@@ -37,6 +37,39 @@ interface ConvFile {
   generated_at: string;
 }
 
+interface MacroAggregateRow {
+  pass_rate: number;
+  mean_input_tokens: number;
+  mean_output_tokens: number;
+  mean_tool_calls: number;
+  mean_turns: number;
+  mean_ms: number;
+  n: number;
+}
+interface MacroFile {
+  status?: "ok" | "skipped";
+  reason?: string;
+  model?: string;
+  corpus_root?: string;
+  tasks?: number;
+  cells?: Array<{
+    taskId: string;
+    taskLabel: string;
+    arm: "control" | "treatment";
+    passed: boolean;
+    inputTokens: number;
+    outputTokens: number;
+    toolCalls: number;
+    turns: number;
+    ms: number;
+    hitCap: string;
+    error?: string;
+  }>;
+  summary?: { control: MacroAggregateRow; treatment: MacroAggregateRow };
+  lift?: { pass_rate: number; input_tokens: number; output_tokens: number; ms: number };
+  generated_at: string;
+}
+
 function latest<T>(tier: string): T | null {
   const dir = join(repoRoot(), "bench", "results");
   // Stamped filename shape: <tier>-<ISO timestamp>.json. The ISO
@@ -231,10 +264,65 @@ function whatItMeans(meso: MesoFile | null, me: MesoEmbedFile | null, conv: Conv
   return lines.join("\n");
 }
 
+function macroSection(macro: MacroFile | null): string {
+  if (!macro) {
+    return "## macro — agent task lift (code + specs corpus)\n\n_No results found. Run `npm run bench:macro` (requires `ANTHROPIC_API_KEY`)._\n";
+  }
+  if (macro.status === "skipped") {
+    return [
+      "## macro — agent task lift (code + specs corpus)",
+      "",
+      `_Skipped: ${macro.reason ?? "no reason recorded"}. Run \`npm run bench:macro\` with \`ANTHROPIC_API_KEY\` set to populate._`,
+      "",
+    ].join("\n");
+  }
+  if (!macro.summary) return "";
+
+  const { control, treatment } = macro.summary;
+  const lift = macro.lift!;
+  const lines = [
+    "## macro — agent task lift (code + specs corpus)",
+    "",
+    `_Model: \`${macro.model}\`. Corpus: \`${macro.corpus_root}\`. Tasks: ${macro.tasks}. Run: ${macro.generated_at}_`,
+    "",
+    "Two arms of the same agent: **control** (read/grep/write/bash) vs **treatment** (control + 5 mdg tools). Same model, same task set, same budget caps (20 turns, 50k input tokens per task).",
+    "",
+    "### Per-arm summary",
+    "",
+    "| arm | pass rate | mean in tokens | mean out tokens | mean tool calls | mean turns | mean ms |",
+    "| :--- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    `| control   | ${fmtPct(control.pass_rate)} | ${num(control.mean_input_tokens)} | ${num(control.mean_output_tokens)} | ${control.mean_tool_calls.toFixed(1)} | ${control.mean_turns.toFixed(1)} | ${num(control.mean_ms)} |`,
+    `| treatment | ${fmtPct(treatment.pass_rate)} | ${num(treatment.mean_input_tokens)} | ${num(treatment.mean_output_tokens)} | ${treatment.mean_tool_calls.toFixed(1)} | ${treatment.mean_turns.toFixed(1)} | ${num(treatment.mean_ms)} |`,
+    "",
+    "### Lift (treatment − control)",
+    "",
+    "| metric | delta | interpretation |",
+    "| :--- | ---: | :--- |",
+    `| pass-rate    | ${lift.pass_rate >= 0 ? "+" : ""}${fmtPct(lift.pass_rate)} | ${lift.pass_rate >= 0 ? "treatment did not regress accuracy" : "treatment dropped accuracy — investigate"} |`,
+    `| input tokens | ${lift.input_tokens >= 0 ? "+" : ""}${fmtPct(lift.input_tokens)} | ${lift.input_tokens < -0.1 ? "**meaningful savings**" : lift.input_tokens > 0.1 ? "treatment more expensive" : "near-parity"} |`,
+    `| output tokens | ${lift.output_tokens >= 0 ? "+" : ""}${fmtPct(lift.output_tokens)} | reasoning-verbosity proxy |`,
+    `| wall-clock | ${lift.ms >= 0 ? "+" : ""}${fmtPct(lift.ms)} | latency overhead is mostly mdg CLI spawn |`,
+    "",
+  ];
+
+  if (macro.cells && macro.cells.length > 0) {
+    lines.push("### Per-task breakdown");
+    lines.push("");
+    lines.push("| task | arm | pass | in tok | out tok | tools | turns |");
+    lines.push("| :--- | :--- | :---: | ---: | ---: | ---: | ---: |");
+    for (const c of macro.cells) {
+      lines.push(`| ${c.taskLabel} | ${c.arm} | ${c.passed ? "yes" : "no"} | ${num(c.inputTokens)} | ${num(c.outputTokens)} | ${c.toolCalls} | ${c.turns} |`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
 function main(): void {
   const meso = latest<MesoFile>("meso");
   const me = latest<MesoEmbedFile>("meso-embed");
   const conv = latest<ConvFile>("conversational");
+  const macro = latest<MacroFile>("macro");
   const body = [
     header(),
     mesoSection(meso),
@@ -242,6 +330,7 @@ function main(): void {
     mesoComparison(meso, me),
     convSection(conv),
     convSavings(conv),
+    macroSection(macro),
     whatItMeans(meso, me, conv),
   ].join("\n");
   const outPath = join(repoRoot(), "BENCHMARKS.md");

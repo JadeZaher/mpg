@@ -6,7 +6,7 @@ Automated summary of the most recent `bench/results/*.json` files. Regenerate wi
 npm run bench && npm run bench:agg
 ```
 
-_Generated 2026-06-07T19:44:13.826Z._
+_Generated 2026-06-07T19:57:00.601Z._
 
 ## meso — recall vs budget (mdg)
 
@@ -57,6 +57,10 @@ ripgrep at the same recall is the cheapest line-oriented baseline. The savings c
 | mdg | +0% | +0% | −0% | +1515% |
 | powershell | +0% | −4% | +2% | +2279% |
 | embed | −79% | −79% | −39% | −66% |
+
+## macro — agent task lift (code + specs corpus)
+
+_Skipped: ANTHROPIC_API_KEY not set. Run `npm run bench:macro` with `ANTHROPIC_API_KEY` set to populate._
 
 ## What the numbers mean
 

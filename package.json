@@ -20,11 +20,12 @@
     "start": "node dist/index.js",
     "mcp": "node dist/mcp-server.js",
     "test": "tsx test/smoke.ts",
-    "bench": "npm run bench:micro && npm run bench:meso && npm run bench:meso-embed && npm run bench:conv && npm run bench:agg",
+    "bench": "npm run bench:micro && npm run bench:meso && npm run bench:meso-embed && npm run bench:conv && npm run bench:macro && npm run bench:agg",
     "bench:micro": "tsx bench/micro/palace-semantics.ts",
     "bench:meso": "tsx bench/meso/recall-vs-budget.ts",
     "bench:meso-embed": "tsx bench/meso/embedding-baseline.ts",
     "bench:conv": "tsx bench/conversational/run.ts",
+    "bench:macro": "tsx bench/macro/run.ts",
     "bench:agg": "tsx bench/aggregate.ts",
     "clean": "rm -rf dist"
   },
@@ -50,6 +51,7 @@
   ],
   "license": "MIT",
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.102.0",
     "@types/node": "^22.10.0",
     "@xenova/transformers": "^2.17.2",
     "tsx": "^4.19.0",
