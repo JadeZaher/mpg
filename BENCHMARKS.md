@@ -6,7 +6,7 @@ Automated summary of the most recent `bench/results/*.json` files. Regenerate wi
 npm run bench && npm run bench:agg
 ```
 
-_Generated 2026-06-07T23:31:48.758Z._
+_Generated 2026-06-07T23:40:43.146Z._
 
 ## compaction — memory-system primitive head-to-head
 
@@ -84,7 +84,23 @@ Two arms of the same agent: **control** (read/grep/write/bash) vs **treatment** 
 
 ## multi-turn — does mind palace stashing pay off across turns?
 
-_Skipped: ANTHROPIC_API_KEY not set_
+_Model: `claude-haiku-4-5-20251001`. Corpus: `C:/Users/atooz/Programming/fractalengine-workspace/fractalengine`. Scenarios: 3. Run: 2026-06-07T23:39:32.356Z_
+
+Multi-step scenarios where earlier turns set up evidence later turns need. Treatment is encouraged to stash early findings so later turns are cheap recalls instead of fresh searches.
+
+### Per-arm summary
+
+| arm | pass rate | mean in tokens | mean out tokens | mean tool calls | mean turns | mean ms |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| control   | 67% | 63999 | 1402 | 11.7 | 12.3 | 95017 |
+| treatment | 0% | 48630 | 731 | 6.3 | 6.3 | 830476 |
+
+### Lift
+
+- **pass-rate**: -67%
+- **input tokens**: -24% (**meaningful savings**)
+- **output tokens**: -48%
+- **wall-clock**: +774%
 
 ## memory-corpus literal recall (oasis-sleek conductor tracks)
 
