@@ -12,6 +12,10 @@ import { paginate } from "./pagination.js";
 import { formatPalaceList, formatPalaceGet } from "./palace-format.js";
 import {
   addStash,
+  addRelation,
+  removeRelation,
+  getRelated,
+  traversalGraph,
   composeToSources,
   exceptToSources,
   intersectToSources,
@@ -149,6 +153,38 @@ async function main(): Promise<number> {
     }
     savePalace(palacePath, palace);
     process.stderr.write(`mdg: dropped stash "${config.mind_palace.drop}"\n`);
+    return 0;
+  }
+  if (config.mind_palace?.link) {
+    try {
+      const rel = addRelation(palace, config.mind_palace.link.from, config.mind_palace.link.to, config.mind_palace.link.type, config.mind_palace.link.note);
+      savePalace(palacePath, palace);
+      process.stdout.write(formatRelationResult("linked", config.mind_palace.link, rel));
+      return 0;
+    } catch (err) {
+      process.stderr.write(`mdg: ${(err as Error).message}\n`);
+      return 4;
+    }
+  }
+  if (config.mind_palace?.unlink) {
+    try {
+      removeRelation(palace, config.mind_palace.unlink.from, config.mind_palace.unlink.to);
+      savePalace(palacePath, palace);
+      process.stdout.write(`<mdg unlink from="${config.mind_palace.unlink.from}" to="${config.mind_palace.unlink.to}"/>\n`);
+      return 0;
+    } catch (err) {
+      process.stderr.write(`mdg: ${(err as Error).message}\n`);
+      return 4;
+    }
+  }
+  if (config.mind_palace?.related) {
+    const related = getRelated(palace, config.mind_palace.related);
+    process.stdout.write(formatRelated(related, config.mind_palace.related));
+    return 0;
+  }
+  if (config.mind_palace?.graph) {
+    const graph = traversalGraph(palace, config.mind_palace.graph.name, config.mind_palace.graph.depth);
+    process.stdout.write(formatGraph(graph, config.mind_palace.graph.name, config.mind_palace.graph.depth));
     return 0;
   }
 
@@ -310,7 +346,53 @@ async function main(): Promise<number> {
   return budgetedNodes.length === 0 ? 1 : 0;
 }
 
-/** Format a prune result for the LLM. */
+/** Format a relation result. */
+function formatRelationResult(
+  action: string,
+  link: { from: string; to: string; type: string; note: string },
+  rel: { type: string; note: string; created_at: string },
+): string {
+  return `<mdg relation action=${action} from="${link.from}" to="${link.to}" type="${rel.type}">
+  ${link.from} --(${rel.type})--> ${link.to}
+  ${rel.note ? `note: ${rel.note}\n` : ""}created: ${rel.created_at}
+</mdg relation>\n`;
+}
+
+function formatRelated(
+  related: Array<{ stash: { name: string; note: string; tags: string[] }; direction: "outbound" | "inbound"; relation: { type: string; note: string } }>,
+  center: string,
+): string {
+  if (related.length === 0) {
+    return `<mdg related name="${center}">No relationships found.</mdg related>\n`;
+  }
+  const out: string[] = [];
+  out.push(`<mdg related name="${center}" count="${related.length}">`);
+  for (const r of related) {
+    const dir = r.direction === "outbound" ? `--> ${r.stash.name}` : `${r.stash.name} -->`;
+    out.push(`  ${dir}  [${r.relation.type}]${r.relation.note ? ` "${r.relation.note}"` : ""}`);
+  }
+  out.push("</mdg related>");
+  return out.join("\n");
+}
+
+function formatGraph(
+  graph: Array<{ stash: { name: string; note: string }; depth: number; direction: "outbound" | "inbound"; via: string; relation: { type: string; note: string } }>,
+  root: string,
+  maxDepth: number,
+): string {
+  if (graph.length === 0) {
+    return `<mdg graph name="${root}">No relationships found.</mdg graph>\n`;
+  }
+  const out: string[] = [];
+  out.push(`<mdg graph name="${root}" nodes="${graph.length}" max_depth="${maxDepth}">`);
+  for (const g of graph) {
+    const indent = "  ".repeat(g.depth);
+    const dir = g.direction === "outbound" ? "-->" : "<--";
+    out.push(`${indent}[depth ${g.depth}] ${g.via} ${dir} ${g.stash.name}  [${g.relation.type}]${g.relation.note ? ` "${g.relation.note}"` : ""}`);
+  }
+  out.push("</mdg graph>");
+  return out.join("\n");
+}
 function formatPruneResult(r: { removed: number; names: string[]; dry_run: boolean }): string {
   const tag = r.dry_run ? " (DRY RUN — nothing was deleted)" : "";
   if (r.removed === 0) {

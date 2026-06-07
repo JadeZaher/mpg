@@ -66,6 +66,16 @@ export interface RawArgs {
   mpPruneDryRun: boolean;
   // TTL.
   mpTtl?: string;
+  // Relationships.
+  mpLinkFrom?: string;
+  mpLinkTo?: string;
+  mpLinkType?: string;
+  mpLinkNote?: string;
+  mpUnlinkFrom?: string;
+  mpUnlinkTo?: string;
+  mpRelated?: string;
+  mpGraph?: string;
+  mpGraphDepth: number;
   // Pagination + discovery.
   page?: number;
   pageSize?: number;
@@ -179,6 +189,18 @@ PRUNING & TTL (keep the palace from growing unbounded)
       --mp-prune-dry-run         Show what would be removed.
       --mp-prune-confirm         Required for --mp-prune-all.
 
+RELATIONSHIPS (make the "graph" in markdowngraphcli real)
+      --mp-link <from> <to> <type> [note]
+                                Create a directed edge between stashes.
+                                Types: depends-on, related-to, see-also,
+                                parent-of, child-of, supersedes, or
+                                any custom string.
+      --mp-unlink <from> <to>    Remove a relationship.
+      --mp-related <name>        Show all stashes connected to <name>
+                                (both inbound and outbound edges).
+      --mp-graph <name> [depth]  Traversal graph from <name> up to
+                                [depth] levels (default 3).
+
 EXAMPLES
   # Find TODOs in src/, with 500 tokens of context, up to 20 nodes
   mdg "TODO" --in src/ --max-nodes 20
@@ -266,6 +288,7 @@ export function parseArgs(argv: string[]): RawArgs {
     mpPruneAll: false,
     mpPruneConfirm: false,
     mpPruneDryRun: false,
+    mpGraphDepth: 3,
     all: false,
     ls: false,
     mpStashLocations: false,
@@ -418,6 +441,36 @@ export function parseArgs(argv: string[]): RawArgs {
     if (a === "--mp-prune-confirm") { args.mpPruneConfirm = true; i++; continue; }
     if (a === "--mp-prune-dry-run") { args.mpPruneDryRun = true; i++; continue; }
 
+    // Relationships.
+    if (a === "--mp-link") {
+      args.mpLinkFrom = requireValue(a, argv, ++i); i++;
+      args.mpLinkTo = requireValue("--mp-link <to>", argv, i); i++;
+      args.mpLinkType = requireValue("--mp-link <type>", argv, i); i++;
+      // Optional note.
+      if (i < argv.length && !argv[i].startsWith("-")) {
+        args.mpLinkNote = argv[i];
+        i++;
+      }
+      continue;
+    }
+    if (a === "--mp-unlink") {
+      args.mpUnlinkFrom = requireValue(a, argv, ++i); i++;
+      args.mpUnlinkTo = requireValue("--mp-unlink <to>", argv, i); i++;
+      continue;
+    }
+    if (a === "--mp-related") {
+      args.mpRelated = requireValue(a, argv, ++i); i++; continue;
+    }
+    if (a === "--mp-graph") {
+      args.mpGraph = requireValue(a, argv, ++i); i++;
+      // Optional depth.
+      if (i < argv.length && !argv[i].startsWith("-")) {
+        args.mpGraphDepth = parseInt(argv[i], 10);
+        i++;
+      }
+      continue;
+    }
+
     // Pagination.
     if (a === "--page") { args.page = parseInt(requireValue(a, argv, ++i), 10); i++; continue; }
     if (a === "--page-size") { args.pageSize = parseInt(requireValue(a, argv, ++i), 10); i++; continue; }
@@ -529,7 +582,8 @@ export function resolveConfig(raw: RawArgs): ResolvedConfig {
     raw.mpFrom || (raw.mpCompose && raw.mpCompose.length > 0) ||
     raw.mpExcept || (raw.mpIntersect && raw.mpIntersect.length > 0) ||
     raw.mpPruneOlderThan || raw.mpPruneKeep !== undefined || raw.mpPruneTag ||
-    raw.mpPruneAll || raw.mpTtl || raw.mpPath
+    raw.mpPruneAll || raw.mpTtl || raw.mpPath ||
+    raw.mpLinkFrom || raw.mpUnlinkFrom || raw.mpRelated || raw.mpGraph
   ) {
     mind_palace = {
       path: raw.mpPath,
@@ -557,6 +611,20 @@ export function resolveConfig(raw: RawArgs): ResolvedConfig {
       mind_palace.intersect = raw.mpIntersect;
     }
     if (raw.mpTtl) mind_palace.ttl = raw.mpTtl;
+    // Relationships.
+    if (raw.mpLinkFrom && raw.mpLinkTo && raw.mpLinkType) {
+      mind_palace.link = {
+        from: raw.mpLinkFrom,
+        to: raw.mpLinkTo,
+        type: raw.mpLinkType,
+        note: raw.mpLinkNote ?? "",
+      };
+    }
+    if (raw.mpUnlinkFrom && raw.mpUnlinkTo) {
+      mind_palace.unlink = { from: raw.mpUnlinkFrom, to: raw.mpUnlinkTo };
+    }
+    if (raw.mpRelated) mind_palace.related = raw.mpRelated;
+    if (raw.mpGraph) mind_palace.graph = { name: raw.mpGraph, depth: raw.mpGraphDepth ?? 3 };
     // Pruning.
     if (raw.mpPruneOlderThan) mind_palace.prune_older_than = raw.mpPruneOlderThan;
     if (raw.mpPruneKeep !== undefined) mind_palace.prune_keep = raw.mpPruneKeep;

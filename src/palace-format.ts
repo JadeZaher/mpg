@@ -58,6 +58,9 @@ export function formatPalaceList(
     out.push(`pattern: ${c(useColor, FG_YELLOW, s.search.pattern)}`);
     out.push(`effort:  ${s.search.effort}`);
     out.push(`nodes:   ${s.nodes.length}  |  sources: ${s.sources.length}`);
+    if (s.relations.length > 0) {
+      out.push(`links:   ${s.relations.length} relationship${s.relations.length === 1 ? "" : "s"}`);
+    }
     const relTime = formatRelativeTime(s.updated_at);
     out.push(`updated: ${relTime} (${s.updated_at})`);
     if (s.expires_at) {
@@ -121,6 +124,14 @@ export function formatPalaceGet(
     out.push("--- SOURCES (file paths stashed; can be passed to --mp-from) ---");
     for (const s of stash.sources) {
       out.push(`  ${s}`);
+    }
+  }
+
+  if (stash.relations.length > 0) {
+    out.push("");
+    out.push("--- RELATIONS ---");
+    for (const r of stash.relations) {
+      out.push(`  --> ${r.target}  [${r.type}]${r.note ? ` "${r.note}"` : ""}  (${formatRelativeTime(r.created_at)})`);
     }
   }
 

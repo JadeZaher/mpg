@@ -830,6 +830,63 @@ function main() {
     assert(palace.stashes["untagged"], "untagged stash remains");
   }
 
+  // Test 53: --mp-link creates a relationship.
+  process.stdout.write("\nTest 53: --mp-link creates a relationship\n");
+  {
+    // Use a fresh palace since pruning tests may have cleared the main one.
+    const p4 = join(fixtures, "rel-palace.json");
+    spawnSync("node", [cliPath, "TODO", "--in", join(fixtures, "auth.ts"),
+      "--mp-stash", "one", "stash one", "--no-color",
+    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p4 } });
+    spawnSync("node", [cliPath, "TODO", "--in", join(fixtures, "session.ts"),
+      "--mp-stash", "two", "stash two", "--no-color",
+    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p4 } });
+    const r = spawnSync("node", [cliPath, "--mp-link", "one", "two", "depends-on", "one needs two", "--no-color",
+    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p4 } });
+    assert((r.status ?? -1) === 0, `exit code 0 (got ${r.status})`);
+    assert(/depends-on/.test(r.stdout ?? ""), "shows relationship type");
+  }
+
+  // Test 54: --mp-related shows both directions.
+  process.stdout.write("\nTest 54: --mp-related shows both directions\n");
+  {
+    const p4 = join(fixtures, "rel-palace.json");
+    const r = spawnSync("node", [cliPath, "--mp-related", "one", "--no-color",
+    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p4 } });
+    assert(/two/.test(r.stdout ?? ""), "shows related stash 'two'");
+    assert(/depends-on/.test(r.stdout ?? ""), "shows relationship type");
+  }
+
+  // Test 55: --mp-graph shows traversal.
+  process.stdout.write("\nTest 55: --mp-graph shows traversal\n");
+  {
+    const p4 = join(fixtures, "rel-palace.json");
+    const r = spawnSync("node", [cliPath, "--mp-graph", "one", "2", "--no-color",
+    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p4 } });
+    assert(/<mdg graph/.test(r.stdout ?? ""), "shows graph output");
+  }
+
+  // Test 56: --mp-unlink removes a relationship.
+  process.stdout.write("\nTest 56: --mp-unlink removes a relationship\n");
+  {
+    const p4 = join(fixtures, "rel-palace.json");
+    spawnSync("node", [cliPath, "--mp-unlink", "one", "two", "--no-color",
+    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p4 } });
+    const r = spawnSync("node", [cliPath, "--mp-related", "one", "--no-color",
+    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p4 } });
+    assert(!/two/.test(r.stdout ?? ""), "relationship removed");
+  }
+
+  // Test 57: stashed nodes have file_path field for file sources.
+  process.stdout.write("\nTest 57: stashed nodes have file_path field\n");
+  {
+    const p4 = join(fixtures, "rel-palace.json");
+    const palace = JSON.parse(readFileSync(p4, "utf8"));
+    const node = palace.stashes["one"].nodes[0];
+    assert(node.file_path !== null, "file_path is set for file sources");
+    assert(node.file_path === node.source, "file_path matches source for file-type sources");
+  }
+
   // Cleanup.
   rmSync(fixtures, { recursive: true, force: true });
 

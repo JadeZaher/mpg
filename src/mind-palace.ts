@@ -47,11 +47,25 @@ export interface Stash {
   sources: string[];
   /** The stashed nodes (subset of full Node: source + location + matched text snapshot). */
   nodes: StashedNode[];
+  /** Source file paths (filesystem paths only, no cmd/url/stdin). */
+  file_paths: string[];
+  /** Relationships to other stashes. */
+  relations: StashRelation[];
+}
+
+/** A directed edge between two stashes. */
+export interface StashRelation {
+  target: string;
+  type: string;
+  note: string;
+  created_at: string;
 }
 
 /** A compact, stash-friendly representation of a Node. */
 export interface StashedNode {
   source: string;
+  /** Canonical filesystem path, or null if source is not a file. */
+  file_path: string | null;
   source_type: string;
   match_line: number;
   start_line: number;
@@ -146,6 +160,7 @@ export function savePalace(path: string, palace: Palace): void {
 export function stashNodes(nodes: Node[]): StashedNode[] {
   return nodes.map((n) => ({
     source: n.source.id,
+    file_path: n.source.type === "file" ? n.source.id : null,
     source_type: n.source.type,
     match_line: n.match_line,
     start_line: n.start_line,
@@ -198,6 +213,8 @@ export function addStash(
       search: meta,
       sources: dedup(sources),
       nodes: newNodes,
+      file_paths: dedup(sources.filter((s) => s.startsWith("/") || s.includes(":") || s.includes("\\"))),
+      relations: [],
     };
     palace.stashes[name] = stash;
     return { stash, action: "created" };
@@ -211,6 +228,7 @@ export function addStash(
     existing.search = meta;
     existing.sources = dedup(sources);
     existing.nodes = newNodes;
+    existing.file_paths = dedup(sources.filter((s) => s.startsWith("/") || s.includes(":") || s.includes("\\")));
     return { stash: existing, action: "replaced" };
   }
 
@@ -225,6 +243,10 @@ export function addStash(
     }
   }
   existing.sources = dedup([...existing.sources, ...sources]);
+  existing.file_paths = dedup([
+    ...existing.file_paths,
+    ...sources.filter((s) => s.startsWith("/") || s.includes(":") || s.includes("\\")),
+  ]);
   if (tags.length > 0) {
     const tagSet = new Set([...existing.tags, ...tags]);
     existing.tags = [...tagSet];
@@ -339,6 +361,7 @@ function dedup(arr: string[]): string[] {
 export function stashNodesLocations(nodes: Node[]): StashedNode[] {
   return nodes.map((n) => ({
     source: n.source.id,
+    file_path: n.source.type === "file" ? n.source.id : null,
     source_type: n.source.type,
     match_line: n.match_line,
     start_line: n.match_line,
@@ -461,4 +484,137 @@ export function pruneAll(palace: Palace, confirmed: boolean, dryRun = false): Pr
   }
   if (!dryRun) palace.stashes = {};
   return { removed: names.length, names, dry_run: dryRun };
+}
+
+// ─── Relationships ──────────────────────────────────────────────────
+
+/** Add a directed relationship from `from` stash to `to` stash. */
+export function addRelation(
+  palace: Palace,
+  from: string,
+  to: string,
+  type: string,
+  note: string,
+): StashRelation {
+  const source = palace.stashes[from];
+  if (!source) throw new Error(`Unknown stash: ${from}`);
+  if (!palace.stashes[to]) throw new Error(`Unknown stash: ${to}`);
+  if (from === to) throw new Error(`Cannot link a stash to itself.`);
+  const rel: StashRelation = {
+    target: to,
+    type,
+    note,
+    created_at: new Date().toISOString(),
+  };
+  // Dedup: replace any existing relation with the same target+type.
+  source.relations = source.relations.filter(
+    (r) => !(r.target === to && r.type === type),
+  );
+  source.relations.push(rel);
+  source.updated_at = new Date().toISOString();
+  return rel;
+}
+
+/** Remove a relationship from `from` to `to`. */
+export function removeRelation(
+  palace: Palace,
+  from: string,
+  to: string,
+): boolean {
+  const source = palace.stashes[from];
+  if (!source) throw new Error(`Unknown stash: ${from}`);
+  const before = source.relations.length;
+  source.relations = source.relations.filter((r) => r.target !== to);
+  if (source.relations.length < before) {
+    source.updated_at = new Date().toISOString();
+    return true;
+  }
+  return false;
+}
+
+/** Get all stashes related to `name` (both outbound and inbound edges). */
+export function getRelated(
+  palace: Palace,
+  name: string,
+): Array<{ stash: Stash; direction: "outbound" | "inbound"; relation: StashRelation }> {
+  if (!palace.stashes[name]) return [];
+  const out: ReturnType<typeof getRelated> = [];
+  // Outbound: relationships FROM this stash.
+  for (const r of palace.stashes[name].relations) {
+    const target = palace.stashes[r.target];
+    if (target) out.push({ stash: target, direction: "outbound", relation: r });
+  }
+  // Inbound: relationships TO this stash from others.
+  for (const [otherName, otherStash] of Object.entries(palace.stashes)) {
+    if (otherName === name) continue;
+    for (const r of otherStash.relations) {
+      if (r.target === name) {
+        out.push({ stash: otherStash, direction: "inbound", relation: r });
+      }
+    }
+  }
+  return out;
+}
+
+/** Traverse the relationship graph from `name` up to `maxDepth` levels. */
+export function traversalGraph(
+  palace: Palace,
+  name: string,
+  maxDepth: number,
+): Array<{ stash: Stash; depth: number; direction: "outbound" | "inbound"; via: string; relation: StashRelation }> {
+  if (!palace.stashes[name]) return [];
+  const visited = new Set<string>([name]);
+  const out: ReturnType<typeof traversalGraph> = [];
+  const queue: Array<{ target: string; depth: number; direction: "outbound" | "inbound"; via: string; relation: StashRelation }> = [];
+
+  // Seed with outbound edges from the starting node.
+  for (const r of palace.stashes[name].relations) {
+    if (!palace.stashes[r.target]) continue;
+    queue.push({
+      target: r.target,
+      depth: 1,
+      direction: "outbound",
+      via: name,
+      relation: r,
+    });
+  }
+  // Also seed inbound edges.
+  for (const [otherName, otherStash] of Object.entries(palace.stashes)) {
+    if (otherName === name) continue;
+    for (const r of otherStash.relations) {
+      if (r.target === name) {
+        queue.push({
+          target: otherName,
+          depth: 1,
+          direction: "inbound",
+          via: name,
+          relation: r,
+        });
+      }
+    }
+  }
+
+  // BFS traversal.
+  while (queue.length > 0) {
+    const item = queue.shift()!;
+    if (visited.has(item.target)) continue;
+    visited.add(item.target);
+    const stash = palace.stashes[item.target];
+    if (!stash) continue;
+    out.push({ stash, depth: item.depth, direction: item.direction, via: item.via, relation: item.relation });
+    if (item.depth >= maxDepth) continue;
+    // Enqueue neighbors.
+    for (const r of stash.relations) {
+      if (!visited.has(r.target)) {
+        queue.push({
+          target: r.target,
+          depth: item.depth + 1,
+          direction: "outbound",
+          via: item.target,
+          relation: r,
+        });
+      }
+    }
+  }
+  return out;
 }

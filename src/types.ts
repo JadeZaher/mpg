@@ -151,6 +151,14 @@ export interface MindPalaceOps {
   prune_confirm?: boolean;
   /** --mp-prune-dry-run: show what would be pruned without deleting. */
   prune_dry_run?: boolean;
+  /** --mp-link: create a relationship between stashes. */
+  link?: { from: string; to: string; type: string; note: string };
+  /** --mp-unlink: remove a relationship. */
+  unlink?: { from: string; to: string };
+  /** --mp-related: list related stashes. */
+  related?: string;
+  /** --mp-graph: traversal graph from a stash. */
+  graph?: { name: string; depth: number };
 }
 
 /** A source input as specified on the command line, pre-resolution. */

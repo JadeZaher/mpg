@@ -55,6 +55,8 @@ GOLDEN RULES:
   - Drop or prune when done. Stashes are persistent on disk.
   - Use --mp-ttl for ephemeral stashes (e.g. "2h", "30m").
   - Prune old stashes regularly: --mp-prune-older-than 7d.
+  - Create relationships: --mp-link <a> <b> depends-on "note".
+  - Traverse the graph: --mp-graph <name> 3 to see the dependency chain.
   - Always --mp-prune-dry-run before a destructive prune.
   - Use separate palaces per task.
 ```
