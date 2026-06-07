@@ -6,7 +6,7 @@ Automated summary of the most recent `bench/results/*.json` files. Regenerate wi
 npm run bench && npm run bench:agg
 ```
 
-_Generated 2026-06-07T22:13:48.282Z._
+_Generated 2026-06-07T22:17:06.006Z._
 
 ## meso — recall vs budget (mdg)
 
@@ -85,7 +85,40 @@ _Run: 2026-06-07T21:40:20.037Z. Queries are PARAPHRASED — the literal pattern 
 
 ## macro — agent task lift (code + specs corpus)
 
-_Skipped: ANTHROPIC_API_KEY not set. Run `npm run bench:macro` with `ANTHROPIC_API_KEY` set to populate._
+_Model: `claude-haiku-4-5-20251001`. Corpus: `C:/Users/atooz/Programming/fractalengine-workspace/fractalengine`. Tasks: 5. Run: 2026-06-07T22:16:18.681Z_
+
+Two arms of the same agent: **control** (read/grep/write/bash) vs **treatment** (control + 5 mdg tools). Same model, same task set, same budget caps (20 turns, 50k input tokens per task).
+
+### Per-arm summary
+
+| arm | pass rate | mean in tokens | mean out tokens | mean tool calls | mean turns | mean ms |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| control   | 100% | 15430 | 573 | 4.8 | 5.8 | 12459 |
+| treatment | 100% | 17541 | 478 | 3.8 | 4.6 | 22653 |
+
+### Lift (treatment − control)
+
+| metric | delta | interpretation |
+| :--- | ---: | :--- |
+| pass-rate    | +0% | treatment did not regress accuracy |
+| input tokens | +14% | treatment more expensive |
+| output tokens | -17% | reasoning-verbosity proxy |
+| wall-clock | +82% | latency overhead is mostly mdg CLI spawn |
+
+### Per-task breakdown
+
+| task | arm | pass | in tok | out tok | tools | turns |
+| :--- | :--- | :---: | ---: | ---: | ---: | ---: |
+| entity hierarchy from bloom_stage spec | control | yes | 19276 | 675 | 6 | 7 |
+| entity hierarchy from bloom_stage spec | treatment | yes | 14296 | 421 | 3 | 4 |
+| asset addressing scheme | control | yes | 4262 | 219 | 2 | 3 |
+| asset addressing scheme | treatment | yes | 19301 | 483 | 4 | 4 |
+| function name that loads assets into Bevy | control | yes | 6433 | 347 | 3 | 4 |
+| function name that loads assets into Bevy | treatment | yes | 12048 | 367 | 3 | 4 |
+| previous camera type before bloom_stage | control | yes | 30654 | 914 | 8 | 9 |
+| previous camera type before bloom_stage | treatment | yes | 17231 | 272 | 2 | 3 |
+| code-review tracks from 2026-04-30 | control | yes | 16523 | 712 | 5 | 6 |
+| code-review tracks from 2026-04-30 | treatment | yes | 24829 | 849 | 7 | 8 |
 
 ## multi-turn — does mind palace stashing pay off across turns?
 
