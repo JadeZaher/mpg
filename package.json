@@ -20,7 +20,7 @@
     "start": "node dist/index.js",
     "mcp": "node dist/mcp-server.js",
     "test": "tsx test/smoke.ts",
-    "bench": "npm run bench:micro && npm run bench:meso && npm run bench:meso-embed && npm run bench:conv && npm run bench:conv-chunked && npm run bench:semantic && npm run bench:macro && npm run bench:multiturn && npm run bench:agg",
+    "bench": "npm run bench:micro && npm run bench:meso && npm run bench:meso-embed && npm run bench:conv && npm run bench:conv-chunked && npm run bench:semantic && npm run bench:macro && npm run bench:multiturn && npm run bench:compaction && npm run bench:agg",
     "bench:micro": "tsx bench/micro/palace-semantics.ts",
     "bench:meso": "tsx bench/meso/recall-vs-budget.ts",
     "bench:meso-embed": "tsx bench/meso/embedding-baseline.ts",
@@ -29,6 +29,7 @@
     "bench:semantic": "tsx bench/semantic/run.ts",
     "bench:macro": "tsx bench/macro/run.ts",
     "bench:multiturn": "tsx bench/multiturn/run.ts",
+    "bench:compaction": "tsx bench/compaction/run.ts",
     "bench:agg": "tsx bench/aggregate.ts",
     "clean": "rm -rf dist"
   },

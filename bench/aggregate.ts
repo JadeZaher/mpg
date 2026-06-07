@@ -114,6 +114,40 @@ interface ConvChunkedFile {
   generated_at: string;
 }
 
+interface CompactionAggregateRow {
+  arm: string;
+  mean_pass_rate: number;
+  mean_compaction_tokens: number;
+  mean_input_tokens: number;
+  mean_output_tokens: number;
+  mean_density: number;
+  mean_ms: number;
+  n: number;
+}
+interface CompactionFile {
+  status?: "ok" | "partial" | "skipped";
+  reason?: string;
+  has_api_key?: boolean;
+  tasks?: number;
+  corpus_files?: number;
+  corpus_roots?: string[];
+  cells?: Array<{
+    taskId: string;
+    taskLabel: string;
+    arm: string;
+    compaction_tokens: number;
+    budget_tokens: number;
+    input_tokens: number;
+    output_tokens: number;
+    pass_rate: number;
+    density: number;
+    ms: number;
+    error?: string;
+  }>;
+  summary?: Record<string, CompactionAggregateRow>;
+  generated_at: string;
+}
+
 function latest<T>(tier: string): T | null {
   const dir = join(repoRoot(), "bench", "results");
   // Stamped filename shape: <tier>-<ISO timestamp>.json. The ISO
@@ -471,6 +505,56 @@ function multiTurnSection(mt: MultiTurnFile | null): string {
   return lines.join("\n");
 }
 
+function compactionSection(c: CompactionFile | null): string {
+  if (!c) return "## compaction — memory-system primitive head-to-head\n\n_No results found. Run `npm run bench:compaction` (requires `ANTHROPIC_API_KEY` for full run; no-LLM arms only without)._\n";
+  if (c.status === "skipped") {
+    return [
+      "## compaction — memory-system primitive head-to-head",
+      "",
+      `_Skipped: ${c.reason ?? "no reason recorded"}_`,
+      "",
+    ].join("\n");
+  }
+  const lines = [
+    "## compaction — memory-system primitive head-to-head",
+    "",
+    `_Tasks: ${c.tasks}. Mega-corpus: ${c.corpus_files} files across ${(c.corpus_roots ?? []).length} projects. Run: ${c.generated_at}_`,
+    "",
+    "The honest test of mdg as a memory primitive: given a topic + token budget, can it assemble a compaction a downstream LLM can answer Q&A from? Arms compared:",
+    "",
+    "- **truncation** — no-LLM baseline. Most-recent files until budget.",
+    "- **mdg-scan** — no-LLM mdg call: `scan + sort recent + window-curve log + max-tokens budget`.",
+    "- **summarization** — LLM baseline: rg-retrieve + single-pass LLM compaction.",
+    "- **mdg-agent** — LLM with mdg tools, headline arm.",
+    "",
+  ];
+  if (c.status === "partial") {
+    lines.push(`_Partial run (no API key): only truncation + mdg-scan arms ran without scoring._`);
+    lines.push("");
+  }
+  if (c.summary) {
+    lines.push("### Per-arm summary");
+    lines.push("");
+    lines.push("| arm | pass rate | mean comp tokens | mean in tokens | mean density (pass/k) | mean ms |");
+    lines.push("| :--- | ---: | ---: | ---: | ---: | ---: |");
+    for (const [arm, r] of Object.entries(c.summary)) {
+      lines.push(`| ${arm} | ${fmtPct(r.mean_pass_rate)} | ${num(r.mean_compaction_tokens)} | ${num(r.mean_input_tokens)} | ${r.mean_density.toFixed(2)} | ${num(r.mean_ms)} |`);
+    }
+    lines.push("");
+  }
+  if (c.cells) {
+    lines.push("### Per-task breakdown");
+    lines.push("");
+    lines.push("| task | arm | pass | comp tok | in tok |");
+    lines.push("| :--- | :--- | ---: | ---: | ---: |");
+    for (const cell of c.cells) {
+      lines.push(`| ${cell.taskLabel} | ${cell.arm} | ${fmtPct(cell.pass_rate)} | ${num(cell.compaction_tokens)} | ${num(cell.input_tokens)} |`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
 function main(): void {
   const meso = latest<MesoFile>("meso");
   const me = latest<MesoEmbedFile>("meso-embed");
@@ -479,17 +563,19 @@ function main(): void {
   const sem = latest<SemanticFile>("semantic");
   const macro = latest<MacroFile>("macro");
   const mt = latest<MultiTurnFile>("multiturn");
+  const comp = latest<CompactionFile>("compaction");
   const body = [
     header(),
-    mesoSection(meso),
-    mesoEmbedSection(me),
-    mesoComparison(meso, me),
+    compactionSection(comp),
+    macroSection(macro),
+    multiTurnSection(mt),
     convSection(conv),
     convSavings(conv),
     convChunkedSection(cc, conv),
     semanticSection(sem),
-    macroSection(macro),
-    multiTurnSection(mt),
+    mesoSection(meso),
+    mesoEmbedSection(me),
+    mesoComparison(meso, me),
     whatItMeans(meso, me, conv),
   ].join("\n");
   const outPath = join(repoRoot(), "BENCHMARKS.md");
