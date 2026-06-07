@@ -263,6 +263,7 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
   // Run rg + build nodes.
   const t0 = Date.now();
   const allNodes: Node[] = [];
+  const seenLines = autoTuneApplied ? new Set<string>() : null;
 
   for (const rs of resolved) {
     for await (const match of runRg(opts.pattern, rs.source, rs.content, {
@@ -277,6 +278,11 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
       type: opts.rg?.type,
     })) {
       if (allNodes.length >= maxNodes) break;
+      if (seenLines) {
+        const key = `${rs.source.id}:${match.line}`;
+        if (seenLines.has(key)) continue;
+        seenLines.add(key);
+      }
       const content = loadSourceContent(rs.source, rs.content);
       const node = buildNode(match, content, { beforeTokens: before, afterTokens: after });
       allNodes.push(node);

@@ -1,6 +1,6 @@
 {
   "name": "mdg-cli",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Node-centric context retrieval CLI for LLM harnesses. Token-budgeted search with effort presets, mind palace (stash/drop/compose/relationships), pagination, MCP server, multi-tool schemas for Claude & Gemini.",
   "type": "module",
   "bin": {

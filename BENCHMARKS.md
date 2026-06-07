@@ -6,17 +6,17 @@ Automated summary of the most recent `bench/results/*.json` files. Regenerate wi
 npm run bench && npm run bench:agg
 ```
 
-_Generated 2026-06-07T19:21:59.788Z._
+_Generated 2026-06-07T19:44:13.826Z._
 
 ## meso — recall vs budget (mdg)
 
-_Run: 2026-06-07T19:20:10.847Z_
+_Run: 2026-06-07T19:41:57.052Z_
 
 | effort | recall | precision | F1 | tokens | ms |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| quick | 100% | 79% | 85% | 257 | 182 |
-| normal | 100% | 79% | 85% | 257 | 169 |
-| deep | 100% | 79% | 85% | 257 | 176 |
+| quick | 100% | 79% | 85% | 257 | 256 |
+| normal | 100% | 79% | 85% | 257 | 229 |
+| deep | 100% | 79% | 85% | 257 | 217 |
 
 ## meso — embedding baseline (vector cosine top-k)
 
@@ -35,18 +35,18 @@ _Run: 2026-06-07T19:16:07.166Z_
 | recall    | 100% | 92% | — |
 | precision | 79% | 36% | — |
 | tokens    | 257 | 218 | +18% |
-| ms        | 182 | 4 | +4684% |
+| ms        | 256 | 4 | +6637% |
 
 ## conversational — Claude project memory archive
 
-_Corpus: 991 lines, 1661 KB. Run: 2026-06-07T19:19:35.650Z_
+_Corpus: 1420 lines, 2315 KB. Run: 2026-06-07T19:41:31.872Z_
 
 | substrate | recall | precision | F1 | tokens | ms |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| mdg | 93% | 100% | 96% | 76669 | 226 |
-| ripgrep | 100% | 100% | 100% | 15779 | 12 |
-| powershell | 100% | 95% | 97% | 16130 | 288 |
-| embed | 21% | 21% | 21% | 8274 | 4 |
+| mdg | 100% | 100% | 100% | 17051 | 258 |
+| ripgrep | 100% | 100% | 100% | 17064 | 16 |
+| powershell | 100% | 96% | 97% | 17416 | 381 |
+| embed | 21% | 21% | 21% | 10384 | 6 |
 
 ### conversational savings vs ripgrep baseline
 
@@ -54,32 +54,28 @@ ripgrep at the same recall is the cheapest line-oriented baseline. The savings c
 
 | substrate | recall vs rg | precision vs rg | token cost vs rg | latency vs rg |
 | :--- | ---: | ---: | ---: | ---: |
-| mdg | −7% | +0% | +386% | +1735% |
-| powershell | +0% | −5% | +2% | +2234% |
-| embed | −79% | −79% | −48% | −66% |
+| mdg | +0% | +0% | −0% | +1515% |
+| powershell | +0% | −4% | +2% | +2279% |
+| embed | −79% | −79% | −39% | −66% |
 
 ## What the numbers mean
 
-- **mdg vs ripgrep (conversational corpus, wide-record JSONL)**: mdg costs **4.9× more tokens** than rg at 7% less recall and 0% more precision.
-  - **Why**: mdg's node windowing pads each hit with `before`/`after` tokens of context. On line-based code (its design point), neighboring lines are short. On JSONL where each line is a serialized event of thousands of characters, the same windowing pulls in entire neighboring events. The cost model inverts.
-  - **Implication**: mdg needs a "wide-record" mode — `--before 0 --after 0` or an auto-detected per-line cap — for JSONL/event-stream corpora. This is the headline product finding from the bench.
-- **PowerShell vs ripgrep**: matches rg on recall and precision, but **23× slower**. A Windows user without rg pays a real latency tax (PowerShell ~288 ms vs rg ~12 ms).
-- **Embeddings vs regex (literal pattern queries)**: 21% recall — the embedding substrate is **not** a substitute for regex when the agent knows what literal to search for. Per-line cosine over JSONL events drowns in noise. Different chunking (per-event content extraction) might recover signal. For *semantic* recall ("the agent remembers there was a discussion about X but doesn't know the exact words"), the bench design here doesn't measure it — that's a different query distribution.
+- **mdg vs ripgrep (conversational corpus, wide-record JSONL)**: mdg **ties rg on tokens** (17051 vs 17064, within 5%) at 100% recall and 100% precision. The wide-record auto-tune (drop before/after to 0 when median line length > 500 chars) plus per-line dedup eliminates the windowing penalty on JSONL.
+- **PowerShell vs ripgrep**: matches rg on recall, **24× slower**. A Windows user without rg pays a real latency tax (PowerShell ~381 ms vs rg ~16 ms).
+- **Embeddings vs regex (literal pattern queries)**: 21% recall — the embedding substrate is **not** a substitute for regex when the agent knows the literal. Per-line cosine over JSONL events drowns in noise. For *semantic* recall ("agent remembers we discussed X but not the exact words"), this bench's query design doesn't measure it.
 - **Meso (small synthetic code corpus)**: mdg quick → 100% recall, 257 tokens. Embedding k=5 → 92% recall, 218 tokens. mdg wins on recall by 8%, costs 18% tokens. **Caveat**: the meso corpus is too small (8 files) to be load-bearing — expanding fixtures is in the backlog.
 
 ## Where mdg wins and loses
 
-Honest summary of what the bench shows about mdg's positioning:
+Auto-generated from the latest run.
 
 **Wins:**
-- 100% precision on the conversational corpus — when mdg returns a node, it's relevant. Other substrates returned slightly noisier results.
-- Mind palace set semantics work correctly (micro 16/17): compose=union, intersect=intersection, prune-keep by recency, graph terminates on cycles. None of vector RAG, summary memory, or raw long context exposes these primitives.
-- On line-based code corpora (mdg's design point), recall is at parity with raw rg.
+- Parity with rg on tokens on the conversational JSONL corpus (17051 vs 17064) at the same recall, with **better precision** than PowerShell. rg has no equivalent budget knob, status field, or pagination.
+- Mind palace set semantics hold (micro: compose=union, intersect=intersection, prune-keep by recency, graph terminates on cycles). rg has no equivalent of any of these — and mdg's actual pitch is **stash, recall, compose across turns**, which rg structurally cannot do.
 
 **Loses:**
-- Token cost on wide-record corpora. Node windowing was designed for short context lines; on JSONL it costs 5× more than raw rg.
-- Cold-start latency vs rg (~200ms vs ~12ms) — the Node startup + JSON formatter is overhead that matters when called in tight agent loops.
-- One semantic anomaly in `--mp-except` (micro). Investigating.
+- Cold-start latency vs rg (258ms vs 16ms, ~16× slower). Node startup + JSON formatter overhead matters in tight agent loops; MCP server warm-call is closer to rg.
+- One semantic anomaly in `--mp-except` (micro: 1/17). Logged for investigation.
 
 ## What's missing (the comparison this bench can't make yet)
 

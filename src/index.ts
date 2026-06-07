@@ -247,6 +247,11 @@ async function main(): Promise<number> {
   const t0 = Date.now();
   const allNodes: Node[] = [];
   const sourcesSeen = new Set<string>();
+  // Per-line dedup when auto-tune fires. On wide-record corpora,
+  // multiple matches within one line would otherwise emit one node per
+  // match, each carrying the full (huge) line as match_text. We keep
+  // the first node per (source, line) and drop duplicates.
+  const seenLines = autoTuneApplied ? new Set<string>() : null;
 
   for (const rs of resolved) {
     try {
@@ -257,6 +262,11 @@ async function main(): Promise<number> {
         config.rg_options,
       )) {
         if (allNodes.length >= config.max_nodes) break;
+        if (seenLines) {
+          const key = `${rs.source.id}:${match.line}`;
+          if (seenLines.has(key)) continue;
+          seenLines.add(key);
+        }
         const content = loadSourceContent(rs.source, rs.content);
         const node = buildNode(match, content, {
           beforeTokens,
