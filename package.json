@@ -20,9 +20,12 @@
     "start": "node dist/index.js",
     "mcp": "node dist/mcp-server.js",
     "test": "tsx test/smoke.ts",
-    "bench": "npm run bench:micro && npm run bench:meso",
+    "bench": "npm run bench:micro && npm run bench:meso && npm run bench:meso-embed && npm run bench:conv && npm run bench:agg",
     "bench:micro": "tsx bench/micro/palace-semantics.ts",
     "bench:meso": "tsx bench/meso/recall-vs-budget.ts",
+    "bench:meso-embed": "tsx bench/meso/embedding-baseline.ts",
+    "bench:conv": "tsx bench/conversational/run.ts",
+    "bench:agg": "tsx bench/aggregate.ts",
     "clean": "rm -rf dist"
   },
   "engines": {
@@ -48,6 +51,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@xenova/transformers": "^2.17.2",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }

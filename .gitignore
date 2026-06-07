@@ -6,3 +6,6 @@ dist/
 .pi/
 test/fixtures/
 .mdg/
+
+# Local transformers.js model cache (downloaded on first bench run)
+.transformers-cache/
