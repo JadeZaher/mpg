@@ -887,6 +887,17 @@ function main() {
     assert(node.file_path === node.source, "file_path matches source for file-type sources");
   }
 
+  // Test 58: absolute directory path with native separators (Windows regression).
+  // Node's fs.glob treats `\` as a glob escape, so without normalization an
+  // absolute Windows directory like C:\foo\bar would silently return 0 matches.
+  process.stdout.write("\nTest 58: --in with absolute native directory path\n");
+  {
+    const r = runMdg(["TODO", "--in", fixtures, "--no-color", "--format", "json"]);
+    assert(r.code === 0, `exit code 0 (got ${r.code})`);
+    const json = JSON.parse(r.stdout);
+    assert(json.total_nodes >= 1, `finds matches in absolute dir (got ${json.total_nodes})`);
+  }
+
   // Cleanup.
   rmSync(fixtures, { recursive: true, force: true });
 

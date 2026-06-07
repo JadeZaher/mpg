@@ -62,8 +62,14 @@ export async function expandGlobs(patterns: string[]): Promise<string[]> {
     let s: import("node:fs").Stats | null = null;
     try { s = statSync(p); } catch { /* not on disk */ }
 
+    // Node's fs.glob treats `\` as a glob escape, so absolute Windows
+    // paths with backslashes never match. Normalize separators for the
+    // pattern only — entries returned by glob are still valid paths.
+    const toGlobPattern = (s: string) => s.replace(/\\/g, "/");
+
     if (s && s.isDirectory()) {
-      const recursePattern = `${p.replace(/[\\\/]+$/, "")}/**`;
+      const trimmed = p.replace(/[\\\/]+$/, "");
+      const recursePattern = `${toGlobPattern(trimmed)}/**`;
       try {
         for await (const entry of glob(recursePattern)) {
           try {
@@ -77,7 +83,7 @@ export async function expandGlobs(patterns: string[]): Promise<string[]> {
     } else {
       // Not on disk — treat as a glob pattern.
       try {
-        for await (const entry of glob(p)) {
+        for await (const entry of glob(toGlobPattern(p))) {
           try {
             const es = statSync(entry);
             if (es.isFile()) out.add(entry);
