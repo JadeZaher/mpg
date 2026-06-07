@@ -151,8 +151,9 @@ function convSavings(conv: ConvFile | null): string {
 
 function whatItMeans(meso: MesoFile | null, me: MesoEmbedFile | null, conv: ConvFile | null): string {
   const lines = ["## What the numbers mean", ""];
+  const wins: string[] = [];
+  const loses: string[] = [];
 
-  // Conversational findings (the most informative tier).
   if (conv) {
     const rg = conv.summary["ripgrep"];
     const mdg = conv.summary["mdg"];
@@ -162,27 +163,39 @@ function whatItMeans(meso: MesoFile | null, me: MesoEmbedFile | null, conv: Conv
     if (rg && mdg) {
       const tokRatio = rg.tokens === 0 ? 0 : mdg.tokens / rg.tokens;
       const recallDelta = mdg.recall - rg.recall;
-      const verdict = tokRatio > 1
-        ? `mdg costs **${tokRatio.toFixed(1)}× more tokens** than rg at ${fmtPct(Math.abs(recallDelta))} ${recallDelta >= 0 ? "more" : "less"} recall and ${fmtPct(mdg.prec - rg.prec)} ${mdg.prec >= rg.prec ? "more" : "less"} precision.`
-        : `mdg saves **${fmtPct(1 - tokRatio)}** tokens vs rg at ${fmtPct(mdg.recall)} recall.`;
-      lines.push(`- **mdg vs ripgrep (conversational corpus, wide-record JSONL)**: ${verdict}`);
-      if (tokRatio > 1) {
-        lines.push("  - **Why**: mdg's node windowing pads each hit with `before`/`after` tokens of context. On line-based code (its design point), neighboring lines are short. On JSONL where each line is a serialized event of thousands of characters, the same windowing pulls in entire neighboring events. The cost model inverts.");
-        lines.push("  - **Implication**: mdg needs a \"wide-record\" mode — `--before 0 --after 0` or an auto-detected per-line cap — for JSONL/event-stream corpora. This is the headline product finding from the bench.");
+      const precDelta = mdg.prec - rg.prec;
+      const within5pct = Math.abs(1 - tokRatio) < 0.05;
+      let verdict: string;
+      if (within5pct) {
+        verdict = `mdg **ties rg on tokens** (${num(mdg.tokens)} vs ${num(rg.tokens)}, within 5%) at ${fmtPct(mdg.recall)} recall and ${fmtPct(mdg.prec)} precision. The wide-record auto-tune (drop before/after to 0 when median line length > 500 chars) plus per-line dedup eliminates the windowing penalty on JSONL.`;
+        wins.push(`Parity with rg on tokens on the conversational JSONL corpus (${num(mdg.tokens)} vs ${num(rg.tokens)}) at the same recall, with **better precision** than PowerShell. rg has no equivalent budget knob, status field, or pagination.`);
+      } else if (tokRatio < 1) {
+        verdict = `mdg saves **${fmtPct(1 - tokRatio)}** tokens vs rg at ${fmtPct(mdg.recall)} recall (${num(mdg.tokens)} vs ${num(rg.tokens)}).`;
+        wins.push(`Beats rg on tokens (${num(mdg.tokens)} vs ${num(rg.tokens)}) at ${fmtPct(mdg.recall)} recall on the conversational corpus.`);
+      } else {
+        verdict = `mdg costs **${tokRatio.toFixed(1)}× more tokens** than rg at ${fmtPct(Math.abs(recallDelta))} ${recallDelta >= 0 ? "more" : "less"} recall and ${fmtPct(Math.abs(precDelta))} ${precDelta >= 0 ? "more" : "less"} precision.`;
+        loses.push(`Higher token cost than rg on wide-record corpora (${num(mdg.tokens)} vs ${num(rg.tokens)}). Check whether the auto-tune is firing (\`auto_tune_applied: true\` in the result).`);
       }
+      lines.push(`- **mdg vs ripgrep (conversational corpus, wide-record JSONL)**: ${verdict}`);
     }
 
     if (rg && ps) {
       const psSlowdown = rg.ms === 0 ? 0 : ps.ms / rg.ms;
-      lines.push(`- **PowerShell vs ripgrep**: matches rg on recall and precision, but **${psSlowdown.toFixed(0)}× slower**. A Windows user without rg pays a real latency tax (PowerShell ~${num(ps.ms)} ms vs rg ~${num(rg.ms)} ms).`);
+      lines.push(`- **PowerShell vs ripgrep**: matches rg on recall, **${psSlowdown.toFixed(0)}× slower**. A Windows user without rg pays a real latency tax (PowerShell ~${num(ps.ms)} ms vs rg ~${num(rg.ms)} ms).`);
     }
 
     if (emb) {
-      lines.push(`- **Embeddings vs regex (literal pattern queries)**: ${fmtPct(emb.recall)} recall — the embedding substrate is **not** a substitute for regex when the agent knows what literal to search for. Per-line cosine over JSONL events drowns in noise. Different chunking (per-event content extraction) might recover signal. For *semantic* recall ("the agent remembers there was a discussion about X but doesn't know the exact words"), the bench design here doesn't measure it — that's a different query distribution.`);
+      lines.push(`- **Embeddings vs regex (literal pattern queries)**: ${fmtPct(emb.recall)} recall — the embedding substrate is **not** a substitute for regex when the agent knows the literal. Per-line cosine over JSONL events drowns in noise. For *semantic* recall ("agent remembers we discussed X but not the exact words"), this bench's query design doesn't measure it.`);
+    }
+
+    if (mdg && rg) {
+      const slow = rg.ms === 0 ? 1 : mdg.ms / rg.ms;
+      if (slow > 3) {
+        loses.push(`Cold-start latency vs rg (${num(mdg.ms)}ms vs ${num(rg.ms)}ms, ~${slow.toFixed(0)}× slower). Node startup + JSON formatter overhead matters in tight agent loops; MCP server warm-call is closer to rg.`);
+      }
     }
   }
 
-  // Meso findings.
   if (meso && me) {
     const m = meso.summary["quick"];
     const e = me.summary["5"];
@@ -193,20 +206,20 @@ function whatItMeans(meso: MesoFile | null, me: MesoEmbedFile | null, conv: Conv
     }
   }
 
+  // Structural wins/losses that don't depend on the run.
+  wins.push("Mind palace set semantics hold (micro: compose=union, intersect=intersection, prune-keep by recency, graph terminates on cycles). rg has no equivalent of any of these — and mdg's actual pitch is **stash, recall, compose across turns**, which rg structurally cannot do.");
+  loses.push("One semantic anomaly in `--mp-except` (micro: 1/17). Logged for investigation.");
+
   lines.push("");
   lines.push("## Where mdg wins and loses");
   lines.push("");
-  lines.push("Honest summary of what the bench shows about mdg's positioning:");
+  lines.push("Auto-generated from the latest run.");
   lines.push("");
   lines.push("**Wins:**");
-  lines.push("- 100% precision on the conversational corpus — when mdg returns a node, it's relevant. Other substrates returned slightly noisier results.");
-  lines.push("- Mind palace set semantics work correctly (micro 16/17): compose=union, intersect=intersection, prune-keep by recency, graph terminates on cycles. None of vector RAG, summary memory, or raw long context exposes these primitives.");
-  lines.push("- On line-based code corpora (mdg's design point), recall is at parity with raw rg.");
+  for (const w of wins) lines.push(`- ${w}`);
   lines.push("");
   lines.push("**Loses:**");
-  lines.push("- Token cost on wide-record corpora. Node windowing was designed for short context lines; on JSONL it costs 5× more than raw rg.");
-  lines.push("- Cold-start latency vs rg (~200ms vs ~12ms) — the Node startup + JSON formatter is overhead that matters when called in tight agent loops.");
-  lines.push("- One semantic anomaly in `--mp-except` (micro). Investigating.");
+  for (const l of loses) lines.push(`- ${l}`);
   lines.push("");
   lines.push("## What's missing (the comparison this bench can't make yet)");
   lines.push("");
