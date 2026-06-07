@@ -41,6 +41,7 @@ import {
   type ResolvedSource,
 } from "./sources.js";
 import { parseArgs, resolveConfig, HelpRequestedError, VersionRequestedError } from "./cli.js";
+import { sampleMedianLineLength, WIDE_RECORD_MEDIAN_THRESHOLD } from "./api.js";
 import type { Node, ResolvedConfig, Result, Source } from "./types.js";
 import type { Stash } from "./mind-palace.js";
 
@@ -221,6 +222,27 @@ async function main(): Promise<number> {
   // 5. Resolve inputs.
   const resolved = await resolveInputs(config.inputs);
 
+  // 5b. Wide-record auto-tune. If the user didn't pass explicit
+  // --before/--after and --no-auto-tune was not set, sample line
+  // lengths from the resolved file sources. If the median is over the
+  // wide-record threshold (typical of JSONL events), shrink before/after
+  // to 0 so each node is just the matched line, not its neighbors.
+  let beforeTokens = config.before_tokens;
+  let afterTokens = config.after_tokens;
+  let autoTuneApplied = false;
+  if (config.auto_tune_eligible) {
+    const fileIds: string[] = [];
+    for (const rs of resolved) {
+      if (rs.source.type === "file") fileIds.push(rs.source.id);
+    }
+    const median = sampleMedianLineLength(fileIds);
+    if (median > WIDE_RECORD_MEDIAN_THRESHOLD) {
+      beforeTokens = 0;
+      afterTokens = 0;
+      autoTuneApplied = true;
+    }
+  }
+
   // 6. Run the search.
   const t0 = Date.now();
   const allNodes: Node[] = [];
@@ -237,8 +259,8 @@ async function main(): Promise<number> {
         if (allNodes.length >= config.max_nodes) break;
         const content = loadSourceContent(rs.source, rs.content);
         const node = buildNode(match, content, {
-          beforeTokens: config.before_tokens,
-          afterTokens: config.after_tokens,
+          beforeTokens,
+          afterTokens,
         });
         allNodes.push(node);
         sourcesSeen.add(rs.source.id);
@@ -300,8 +322,9 @@ async function main(): Promise<number> {
     truncated,
     nodes: pagedNodes,
     duration_ms: Date.now() - t0,
-    before_tokens: config.before_tokens,
-    after_tokens: config.after_tokens,
+    before_tokens: beforeTokens,
+    after_tokens: afterTokens,
+    auto_tune_applied: autoTuneApplied || undefined,
     max_nodes: config.max_nodes,
     max_tokens: config.max_tokens,
     pagination,

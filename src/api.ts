@@ -9,6 +9,7 @@
  * is what powers `mdg search`, `mdg stash`, etc. for in-process use.
  */
 
+import { readFileSync, statSync } from "node:fs";
 import { applyTotalBudget, buildNode, loadSourceContent } from "./nodes.js";
 import { runRg } from "./rg.js";
 import {
@@ -83,6 +84,14 @@ export interface SearchOptions {
   pageSize?: number;
   /** Disable pagination; return everything. */
   all?: boolean;
+  /**
+   * Disable the wide-record auto-tune. By default, when the sources
+   * being searched have a median line length over ~500 chars (typical
+   * of JSONL event streams), mdg drops `before`/`after` to 0 so each
+   * node is just the matched line. Set this to `true` to keep the
+   * effort-preset windowing regardless of corpus shape.
+   */
+  noAutoTune?: boolean;
 }
 
 /** Public, harness-friendly node shape. Same as internal Node. */
@@ -107,6 +116,8 @@ export interface SearchResult {
   after_tokens: number;
   max_nodes: number;
   max_tokens?: number;
+  /** True when the wide-record auto-tune shrank before/after to 0. */
+  auto_tune_applied?: boolean;
   /** Optional pagination metadata; absent when pagination is off. */
   pagination?: {
     page: number;
@@ -147,6 +158,40 @@ const EFFORT_DEFAULTS: Record<Effort, { before: number; after: number; maxNodes:
 };
 
 /**
+ * Threshold above which auto-tune treats the corpus as "wide-record"
+ * (JSONL events, log lines with embedded JSON, etc) and drops
+ * before/after padding. Chosen so that typical source code (lines
+ * usually under 200 chars) stays in the line-based regime, while
+ * single-line serialized events trip the switch.
+ */
+export const WIDE_RECORD_MEDIAN_THRESHOLD = 500;
+
+/**
+ * Read up to 100 non-empty lines from up to 3 sampled file paths and
+ * return the median line length. Used by the wide-record auto-tune.
+ * Returns 0 if nothing was sampled (no file inputs, or all reads failed).
+ */
+export function sampleMedianLineLength(files: string[]): number {
+  if (files.length === 0) return 0;
+  const lengths: number[] = [];
+  for (const f of files.slice(0, 3)) {
+    try {
+      const stat = statSync(f);
+      // Skip huge files — sampling cost would dominate.
+      if (stat.size > 10 * 1024 * 1024) continue;
+      const content = readFileSync(f, "utf8");
+      const lines = content.split(/\r?\n/).slice(0, 100);
+      for (const ln of lines) {
+        if (ln.length > 0) lengths.push(ln.length);
+      }
+    } catch { /* skip unreadable files */ }
+  }
+  if (lengths.length === 0) return 0;
+  lengths.sort((a, b) => a - b);
+  return lengths[Math.floor(lengths.length / 2)];
+}
+
+/**
  * Run a search and return structured result.
  *
  * @example
@@ -157,8 +202,10 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
   // Resolve effort defaults.
   const effort = opts.effort ?? "normal";
   const preset = EFFORT_DEFAULTS[effort];
-  const before = opts.before ?? preset.before;
-  const after = opts.after ?? preset.after;
+  const userSetBefore = opts.before !== undefined;
+  const userSetAfter = opts.after !== undefined;
+  let before = opts.before ?? preset.before;
+  let after = opts.after ?? preset.after;
   const maxNodes = opts.maxNodes ?? preset.maxNodes;
   const strategy = opts.strategy ?? "fill";
 
@@ -177,6 +224,22 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
   }
 
   const files = pathInputs.length > 0 ? await resolvePathSpecs(pathInputs) : [];
+
+  // Wide-record auto-tune. If the user didn't pass explicit
+  // before/after and the corpus has very long lines (e.g. JSONL
+  // events), drop padding to 0 so we don't pull in entire neighboring
+  // records around each match. This is the headline product fix for
+  // the conversational-corpus benchmark.
+  let autoTuneApplied = false;
+  if (!opts.noAutoTune && !userSetBefore && !userSetAfter && files.length > 0) {
+    const median = sampleMedianLineLength(files);
+    if (median > WIDE_RECORD_MEDIAN_THRESHOLD) {
+      before = 0;
+      after = 0;
+      autoTuneApplied = true;
+    }
+  }
+
   const resolved: Array<{ source: Source; content: string | null }> = files.map((f) => ({
     source: { id: f, type: "file" },
     content: null,
@@ -256,6 +319,7 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
     after_tokens: after,
     max_nodes: maxNodes,
     max_tokens: opts.maxTokens,
+    auto_tune_applied: autoTuneApplied || undefined,
     pagination,
   };
 }
