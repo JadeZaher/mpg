@@ -1,0 +1,37 @@
+{
+  "name": "mdg-cli",
+  "version": "0.1.0",
+  "description": "Node-centric context retrieval CLI for LLM harnesses. Search code, markdown, command output, URLs — return token-budgeted context nodes.",
+  "type": "module",
+  "bin": {
+    "mdg": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "test": "tsx test/smoke.ts",
+    "clean": "rm -rf dist"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "llm",
+    "context",
+    "retrieval",
+    "ripgrep",
+    "cli",
+    "ai",
+    "harness",
+    "rag",
+    "node-search"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

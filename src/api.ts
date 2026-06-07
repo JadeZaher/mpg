@@ -1,0 +1,500 @@
+/**
+ * Programmatic API for mdg.
+ *
+ * This is the surface an LLM harness should embed against instead of
+ * shelling out to the CLI. It exposes the same operations the CLI
+ * does, but as async functions returning structured data.
+ *
+ * The CLI is a thin wrapper over this module. Conversely, this module
+ * is what powers `mdg search`, `mdg stash`, etc. for in-process use.
+ */
+
+import { applyTotalBudget, buildNode, loadSourceContent } from "./nodes.js";
+import { runRg } from "./rg.js";
+import {
+  captureCommand,
+  captureStdin,
+  captureUrl,
+  resolvePathSpecs,
+} from "./sources.js";
+import {
+  addStash as addStashToPalace,
+  composeToSources,
+  defaultPalacePath,
+  dropStash as dropStashFromPalace,
+  getStash as getStashFromPalace,
+  listStashes as listStashesFromPalace,
+  loadPalace,
+  savePalace,
+  type Stash,
+  type Palace,
+} from "./mind-palace.js";
+import type { Node, Source } from "./types.js";
+
+// ─── Public types ───────────────────────────────────────────────────
+
+export type Effort = "quick" | "normal" | "deep" | "auto";
+export type Strategy = "fill" | "deep";
+
+export interface SearchOptions {
+  /** Regex pattern. Required for search. */
+  pattern: string;
+  /** Paths to search (files, dirs, globs, @file, @-). */
+  in?: string[];
+  /** Search the stdout of a command. */
+  cmd?: string;
+  /** Read content from stdin. */
+  stdin?: boolean;
+  /** Fetch and search a URL. */
+  url?: string;
+  /** Tokens of context before each match. Default: 500. */
+  before?: number;
+  /** Tokens of context after each match. Default: 500. */
+  after?: number;
+  /** Cap on the number of nodes returned. Default: 30. */
+  maxNodes?: number;
+  /** Total token budget across all nodes. */
+  maxTokens?: number;
+  /** How to use --max-tokens. Default: "fill". */
+  strategy?: Strategy;
+  /** Effort preset. Default: "normal". */
+  effort?: Effort;
+  /** rg options. */
+  rg?: {
+    caseInsensitive?: boolean;
+    word?: boolean;
+    fixedStrings?: boolean;
+    multiline?: boolean;
+    hidden?: boolean;
+    noIgnore?: boolean;
+    include?: string[];
+    exclude?: string[];
+    type?: string;
+  };
+  /** Use a stashed file list as the search target. */
+  from?: string;
+  /** Compose multiple stashes' file lists as the search target. */
+  compose?: string[];
+  /** Palace file path. Defaults to project-scoped. */
+  palacePath?: string;
+  /** Pagination: 1-indexed page number. */
+  page?: number;
+  /** Pagination: items per page (default 10). */
+  pageSize?: number;
+  /** Disable pagination; return everything. */
+  all?: boolean;
+}
+
+/** Public, harness-friendly node shape. Same as internal Node. */
+export interface SearchNode extends Node {}
+
+/** Public, harness-friendly result shape. */
+export interface SearchResult {
+  pattern: string;
+  effort: Effort;
+  strategy: Strategy;
+  /** Machine-readable status so LLMs can branch without parsing text. */
+  status: "ok" | "no_matches" | "truncated" | "error";
+  total_nodes: number;
+  total_tokens: number;
+  /** Token count of the actual nodes returned (after pagination). */
+  page_tokens: number;
+  sources_count: number;
+  truncated: boolean;
+  nodes: SearchNode[];
+  duration_ms: number;
+  before_tokens: number;
+  after_tokens: number;
+  max_nodes: number;
+  max_tokens?: number;
+  /** Optional pagination metadata; absent when pagination is off. */
+  pagination?: {
+    page: number;
+    page_size: number;
+    total_items: number;
+    total_pages: number;
+    has_next: boolean;
+    has_prev: boolean;
+  };
+}
+
+export interface StashOptions {
+  /** Stash name. */
+  name: string;
+  /** Free-form note. */
+  note?: string;
+  /** Tags for filtering. */
+  tags?: string[];
+  /** Overwrite an existing stash. Default: merge. */
+  replace?: boolean;
+  /** Palace file path. Defaults to project-scoped. */
+  palacePath?: string;
+}
+
+export interface StashResult {
+  action: "created" | "merged" | "replaced";
+  stash: Stash;
+  palace_path: string;
+}
+
+// ─── Search ─────────────────────────────────────────────────────────
+
+const EFFORT_DEFAULTS: Record<Effort, { before: number; after: number; maxNodes: number }> = {
+  quick:  { before: 200,  after: 200,  maxNodes: 10  },
+  normal: { before: 500,  after: 500,  maxNodes: 30  },
+  deep:   { before: 2000, after: 2000, maxNodes: 100 },
+  auto:   { before: 500,  after: 500,  maxNodes: 30  },
+};
+
+/**
+ * Run a search and return structured result.
+ *
+ * @example
+ *   const r = await search({ pattern: "TODO", in: ["src/"], effort: "quick" });
+ *   console.log(r.total_nodes, r.nodes[0].match_text);
+ */
+export async function search(opts: SearchOptions): Promise<SearchResult> {
+  // Resolve effort defaults.
+  const effort = opts.effort ?? "normal";
+  const preset = EFFORT_DEFAULTS[effort];
+  const before = opts.before ?? preset.before;
+  const after = opts.after ?? preset.after;
+  const maxNodes = opts.maxNodes ?? preset.maxNodes;
+  const strategy = opts.strategy ?? "fill";
+
+  // Build source list. Path inputs go through resolvePathSpecs which
+  // handles globs, dirs, @- and @file. Other sources are captured
+  // inline.
+  const pathInputs: string[] = [...(opts.in ?? [])];
+  let palace: Palace | null = null;
+  const palacePath = opts.palacePath ?? defaultPalacePath();
+  if (opts.from || (opts.compose && opts.compose.length > 0)) {
+    palace = loadPalace(palacePath);
+    const names = opts.from ? [opts.from] : opts.compose!;
+    for (const s of composeToSources(palace, names)) {
+      pathInputs.unshift(s.id);
+    }
+  }
+
+  const files = pathInputs.length > 0 ? await resolvePathSpecs(pathInputs) : [];
+  const resolved: Array<{ source: Source; content: string | null }> = files.map((f) => ({
+    source: { id: f, type: "file" },
+    content: null,
+  }));
+  if (opts.cmd) {
+    const content = await captureCommand(opts.cmd);
+    resolved.push({
+      source: { id: `cmd:${opts.cmd}`, type: "command", label: `$ ${opts.cmd}` },
+      content,
+    });
+  }
+  if (opts.url) {
+    const content = await captureUrl(opts.url);
+    resolved.push({ source: { id: opts.url, type: "url" }, content });
+  }
+  if (opts.stdin) {
+    const content = await captureStdin();
+    resolved.push({ source: { id: "stdin", type: "stdin" }, content });
+  }
+
+  // Run rg + build nodes.
+  const t0 = Date.now();
+  const allNodes: Node[] = [];
+
+  for (const rs of resolved) {
+    for await (const match of runRg(opts.pattern, rs.source, rs.content, {
+      case_insensitive: opts.rg?.caseInsensitive,
+      word_match: opts.rg?.word,
+      fixed_strings: opts.rg?.fixedStrings,
+      multiline: opts.rg?.multiline,
+      hidden: opts.rg?.hidden,
+      no_ignore: opts.rg?.noIgnore,
+      include_globs: opts.rg?.include,
+      exclude_globs: opts.rg?.exclude,
+      type: opts.rg?.type,
+    })) {
+      if (allNodes.length >= maxNodes) break;
+      const content = loadSourceContent(rs.source, rs.content);
+      const node = buildNode(match, content, { beforeTokens: before, afterTokens: after });
+      allNodes.push(node);
+      if (allNodes.length >= maxNodes) break;
+    }
+    if (allNodes.length >= maxNodes) break;
+  }
+
+  const { nodes: budgeted, truncated } = applyTotalBudget(allNodes, opts.maxTokens, strategy);
+
+  // Apply pagination if requested.
+  const { paginate } = await import("./pagination.js");
+  const { items: paged, pagination } = paginate(budgeted, {
+    page: opts.page,
+    pageSize: opts.pageSize,
+    all: opts.all,
+  });
+  paged.forEach((n, i) => { n.id = i + 1; });
+  const sources = new Set(budgeted.map((n) => n.source.id));
+
+  const totalTokens = budgeted.reduce((s, n) => s + n.tokens, 0);
+  const pageTokens = paged.reduce((s, n) => s + n.tokens, 0);
+  const status: SearchResult["status"] =
+    budgeted.length === 0 ? "no_matches" :
+    truncated ? "truncated" : "ok";
+
+  return {
+    pattern: opts.pattern,
+    effort,
+    strategy,
+    status,
+    total_nodes: budgeted.length,
+    total_tokens: totalTokens,
+    page_tokens: pageTokens,
+    sources_count: sources.size,
+    truncated,
+    nodes: paged,
+    duration_ms: Date.now() - t0,
+    before_tokens: before,
+    after_tokens: after,
+    max_nodes: maxNodes,
+    max_tokens: opts.maxTokens,
+    pagination,
+  };
+}
+
+// ─── Mind palace operations ─────────────────────────────────────────
+
+/**
+ * Stash a search result in the mind palace.
+ *
+ * The `result` can be a SearchResult, or just an array of Nodes.
+ * Returns the action taken (created/merged/replaced) and the full stash.
+ */
+export async function stash(result: SearchResult | SearchNode[], opts: StashOptions): Promise<StashResult> {
+  const palacePath = opts.palacePath ?? defaultPalacePath();
+  const palace = loadPalace(palacePath);
+  const nodes = Array.isArray(result) ? result : result.nodes;
+  const sources = Array.isArray(result)
+    ? [...new Set(result.map((n) => n.source.id))]
+    : [...new Set(result.nodes.map((n) => n.source.id))];
+  const pattern = Array.isArray(result) ? "" : result.pattern;
+  const effort = Array.isArray(result) ? "normal" : result.effort;
+  const { action, stash: newStash } = addStashToPalace(
+    palace,
+    opts.name,
+    opts.note ?? "",
+    nodes,
+    { pattern, effort, sources_count: sources.length },
+    sources,
+    opts.tags ?? [],
+    { replace: opts.replace ?? false },
+  );
+  savePalace(palacePath, palace);
+  return { action, stash: newStash, palace_path: palacePath };
+}
+
+export function listStashes(palacePath?: string, tagFilter?: string[]): Stash[] {
+  const path = palacePath ?? defaultPalacePath();
+  const palace = loadPalace(path);
+  return listStashesFromPalace(palace, tagFilter);
+}
+
+export function getStash(name: string, palacePath?: string): Stash | null {
+  const path = palacePath ?? defaultPalacePath();
+  const palace = loadPalace(path);
+  return getStashFromPalace(palace, name);
+}
+
+export function dropStash(name: string, palacePath?: string): boolean {
+  const path = palacePath ?? defaultPalacePath();
+  const palace = loadPalace(path);
+  const ok = dropStashFromPalace(palace, name);
+  if (ok) savePalace(path, palace);
+  return ok;
+}
+
+/** Resolve a stash (or composition of stashes) to its source paths. */
+export function stashToSources(
+  names: string | string[],
+  palacePath?: string,
+): string[] {
+  const path = palacePath ?? defaultPalacePath();
+  const palace = loadPalace(path);
+  const arr = Array.isArray(names) ? names : [names];
+  return composeToSources(palace, arr).map((s) => s.id);
+}
+
+// ─── Tool calling schemas (Claude, Gemini, OpenAI) ──────────────────
+
+// Claude and Gemini work better with SEPARATE tools per operation
+// because each tool_use result is atomic. Five tools = five decisions.
+
+const SEARCH_PARAMS = {
+  type: "object" as const,
+  properties: {
+    pattern: { type: "string", description: "Regex pattern to search for (ripgrep syntax)." },
+    in: { type: "array", items: { type: "string" },
+      description: "Paths to search: files, directories (recurses), globs, @file, @-." },
+    cmd: { type: "string", description: "Search the stdout of a shell command." },
+    url: { type: "string", description: "Fetch and search a URL." },
+    before: { type: "number", description: "Tokens of context before each match. Default 500." },
+    after: { type: "number", description: "Tokens of context after each match. Default 500." },
+    max_nodes: { type: "number", description: "Cap on number of nodes. Default 30." },
+    max_tokens: { type: "number", description: "Total token budget across all nodes." },
+    effort: { type: "string", enum: ["quick", "normal", "deep", "auto"],
+      description: "Preset. quick=200t/10n, normal=500t/30n, deep=2000t/100n." },
+    strategy: { type: "string", enum: ["fill", "deep"],
+      description: "How to use max_tokens. fill prefers more nodes, deep prefers deeper per node." },
+    from: { type: "string", description: "Scope search to files from a stashed mind-palace slot." },
+    compose: { type: "array", items: { type: "string" },
+      description: "Scope search to the union of multiple stashed slots' file lists." },
+    page: { type: "number", description: "1-indexed page number. Set to 1 to enable pagination." },
+    page_size: { type: "number", description: "Nodes per page. Default 10." },
+  },
+  required: ["pattern"],
+};
+
+const STASH_PARAMS = {
+  type: "object" as const,
+  properties: {
+    name: { type: "string", description: "Name for this memory slot. Use kebab-case." },
+    note: { type: "string", description: "Free-form note describing what this stash contains." },
+    tags: { type: "array", items: { type: "string" },
+      description: "Tags for filtering: e.g. ['auth', 'p0', 'security']." },
+    pattern: { type: "string", description: "The regex pattern used in the search (for provenance)." },
+    in: { type: "array", items: { type: "string" }, description: "Paths searched (for provenance)." },
+    effort: { type: "string", enum: ["quick", "normal", "deep", "auto"] },
+    replace: { type: "boolean", description: "Overwrite an existing slot. Default: merge (dedup by file:line)." },
+    palace_path: { type: "string", description: "Override mind-palace file location." },
+  },
+  required: ["name", "note"],
+};
+
+/** Claude-compatible tool definitions. Drop into Claude's API. */
+export const claudeTools = [
+  {
+    type: "function" as const,
+    function: {
+      name: "mdg_search",
+      description:
+        "Search code, markdown, command output, and URLs for a regex " +
+        "pattern. Returns token-budgeted context nodes with file:line " +
+        "attribution. Each node is sized in tokens (not lines). Supports " +
+        "effort presets (quick/normal/deep), pagination, and scoped " +
+        "re-search from mind-palace stashes via the 'from'/'compose' fields.",
+      parameters: SEARCH_PARAMS,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "mdg_stash",
+      description:
+        "Save the result of a search into a named mind-palace slot " +
+        "(the LLM's instantiable short-term memory). Stashed slots can " +
+        "be used as search targets via mdg_search(from:name) or " +
+        "mdg_search(compose:[a,b]). Merges by default (dedup by file:line); " +
+        "pass replace:true to overwrite.",
+      parameters: STASH_PARAMS,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "mdg_list_stashes",
+      description:
+        "List all named memory slots in the mind palace. Optionally " +
+        "filter by tag. Use this to see what you've stashed before deciding " +
+        "to compose or re-search. Supports pagination.",
+      parameters: {
+        type: "object",
+        properties: {
+          tag_filter: { type: "array", items: { type: "string" },
+            description: "Only show stashes with all of these tags." },
+          page: { type: "number", description: "1-indexed page number." },
+          page_size: { type: "number", description: "Stashes per page. Default 20." },
+          palace_path: { type: "string", description: "Override mind-palace file." },
+        },
+        required: [] as string[],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "mdg_get_stash",
+      description:
+        "Show the full contents of a single mind-palace slot: its note, tags, " +
+        "search provenance, all stashed nodes with context, and the list of " +
+        "source file paths (which can be passed to mdg_search as the 'from' field). " +
+        "Supports pagination for large stashes.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Name of the stash to retrieve." },
+          page: { type: "number", description: "1-indexed page number." },
+          page_size: { type: "number", description: "Nodes per page. Default 10." },
+          palace_path: { type: "string", description: "Override mind-palace file." },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "mdg_drop_stash",
+      description:
+        "Remove a slot from the mind palace. Use this to free memory when " +
+        "a line of investigation is complete. Dropped stashes are gone " +
+        "permanently (the JSON file is rewritten).",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Name of the stash to drop." },
+          palace_path: { type: "string", description: "Override mind-palace file." },
+        },
+        required: ["name"],
+      },
+    },
+  },
+] as const;
+
+/** Gemini-compatible tool definitions (function_declarations array). */
+export const geminiTools = claudeTools.map((t) => ({
+  name: t.function.name,
+  description: t.function.description,
+  parameters: t.function.parameters,
+}));
+
+/** Legacy: single-tool definition for OpenAI-compatible APIs. */
+export const toolDefinition = {
+  name: "mdg",
+  description:
+    "Search code, markdown, command output, and URLs. " +
+    "Use mdg_list_stashes first to see available memory slots, " +
+    "then mdg_search to find content, and mdg_stash to save results.",
+  parameters: {
+    type: "object" as const,
+    properties: {
+      action: {
+        type: "string",
+        enum: ["search", "stash", "list", "get", "drop"],
+        description: "Which operation to perform.",
+      },
+      pattern: { type: "string", description: "Regex pattern (search)." },
+      in: { type: "array", items: { type: "string" }, description: "Paths to search." },
+      name: { type: "string", description: "Stash name (stash/get/drop)." },
+      note: { type: "string", description: "Stash note (stash)." },
+      tags: { type: "array", items: { type: "string" }, description: "Tags (stash/filter)." },
+      before: { type: "number" },
+      after: { type: "number" },
+      max_nodes: { type: "number" },
+      max_tokens: { type: "number" },
+      effort: { type: "string", enum: ["quick", "normal", "deep", "auto"] },
+      from: { type: "string", description: "Stash name as search target." },
+      compose: { type: "array", items: { type: "string" }, description: "Stash names as union target." },
+      page: { type: "number", description: "1-indexed page number." },
+      page_size: { type: "number", description: "Items per page." },
+    },
+    required: ["action"],
+  },
+} as const;
