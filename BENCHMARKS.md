@@ -6,7 +6,7 @@ Automated summary of the most recent `bench/results/*.json` files. Regenerate wi
 npm run bench && npm run bench:agg
 ```
 
-_Generated 2026-06-07T23:24:59.594Z._
+_Generated 2026-06-07T23:31:48.758Z._
 
 ## compaction — memory-system primitive head-to-head
 
@@ -134,13 +134,13 @@ _Run: 2026-06-07T22:46:43.220Z. Queries are PARAPHRASED — the literal pattern 
 
 ## typo tolerance — fuzzy search on typo'd queries
 
-_Run: 2026-06-07T23:23:27.099Z. Each query has a CORRECT literal (defines ground truth via rg) and a TYPO'd version fed to every substrate. Tests `mdg --fuzzy` against rg, mdg-without-fuzzy, and per-file embeddings._
+_Run: 2026-06-07T23:30:59.868Z. Each query has a CORRECT literal (defines ground truth via rg) and a TYPO'd version fed to every substrate. Tests `mdg --fuzzy` against rg, mdg-without-fuzzy, and per-file embeddings._
 
 | substrate | recall | precision | F1 | tokens | ms |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| rg | 0% | 0% | 0% | 0 | 21 |
-| mdg | 0% | 0% | 0% | 0 | 1014 |
-| mdg-fuzzy | 60% | 60% | 60% | 192 | 5618 |
+| rg | 0% | 0% | 0% | 0 | 23 |
+| mdg | 0% | 0% | 0% | 0 | 947 |
+| mdg-fuzzy | 100% | 89% | 93% | 1931 | 1012 |
 | embed | 45% | 45% | 45% | 23610 | 3 |
 
 ## meso — recall vs budget (mdg)
