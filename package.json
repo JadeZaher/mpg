@@ -11,6 +11,7 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
+    "mcp": "node dist/mcp-server.js",
     "test": "tsx test/smoke.ts",
     "clean": "rm -rf dist"
   },
