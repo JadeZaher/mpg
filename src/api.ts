@@ -11,6 +11,7 @@
 
 import { readFileSync, statSync } from "node:fs";
 import { applyTotalBudget, applyWindowCurve, buildNode, loadSourceContent } from "./nodes.js";
+import { buildFuzzyRegex, verifyFuzzy } from "./fuzzy.js";
 import { runRg } from "./rg.js";
 import {
   captureCommand,
@@ -308,18 +309,8 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
   const allNodes: Node[] = [];
   const seenLines = autoTuneApplied ? new Set<string>() : null;
 
-  // Fuzzy pattern transform (skipped if pattern already looks regex-y).
-  const effectivePattern = opts.fuzzy
-    ? (function () {
-        const pat = opts.pattern;
-        if (/[\\^$.()\[\]{}|*+?]/.test(pat)) return pat;
-        const chars = [...pat];
-        if (chars.length < 2) return pat;
-        return chars
-          .map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-          .join("[^\\n]{0,2}");
-      })()
-    : opts.pattern;
+  // Fuzzy: trigram-union regex driver + Levenshtein post-filter (./fuzzy.ts).
+  const effectivePattern = opts.fuzzy ? buildFuzzyRegex(opts.pattern) : opts.pattern;
 
   for (const rs of resolved) {
     for await (const match of runRg(effectivePattern, rs.source, rs.content, {
@@ -334,6 +325,9 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
       type: opts.rg?.type,
     })) {
       if (allNodes.length >= maxNodes) break;
+      if (opts.fuzzy) {
+        if (!verifyFuzzy(match.text, match.match_start, opts.pattern, 2)) continue;
+      }
       if (seenLines) {
         const key = `${rs.source.id}:${match.line}`;
         if (seenLines.has(key)) continue;

@@ -42,28 +42,14 @@ import {
 } from "./sources.js";
 import { parseArgs, resolveConfig, HelpRequestedError, VersionRequestedError } from "./cli.js";
 import { sampleMedianLineLength, WIDE_RECORD_MEDIAN_THRESHOLD } from "./api.js";
+import { buildFuzzyRegex, verifyFuzzy } from "./fuzzy.js";
 import type { Node, ResolvedConfig, Result, Source } from "./types.js";
 import type { Stash } from "./mind-palace.js";
 
 const VERSION = "0.2.3";
 
-/**
- * Transform a literal pattern into a typo-tolerant regex by allowing
- * up to 2 extra characters between each consecutive letter pair.
- * `foo` becomes `f[^\n]{0,2}o[^\n]{0,2}o`. Cheap and effective for
- * single-word lookups; for multi-word patterns the user should
- * tokenize themselves (pass space-separated keywords and OR them).
- */
-function fuzzyTransform(pat: string): string {
-  // Don't touch patterns that already look regex-y — too risky to
-  // transform something with anchors or character classes.
-  if (/[\\^$.()\[\]{}|*+?]/.test(pat)) return pat;
-  const chars = [...pat];
-  if (chars.length < 2) return pat;
-  return chars
-    .map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("[^\\n]{0,2}");
-}
+// Fuzzy matching is now in ./fuzzy.ts (trigram-union regex + Levenshtein
+// post-filter; handles drop/insert/substitute/swap up to edit distance 2).
 
 async function main(): Promise<number> {
   // 1. Parse + resolve config.
@@ -274,7 +260,7 @@ async function main(): Promise<number> {
   for (const rs of resolved) {
     try {
       const effectivePattern = config.fuzzy
-        ? fuzzyTransform(config.pattern!)
+        ? buildFuzzyRegex(config.pattern!)
         : config.pattern!;
       for await (const match of runRg(
         effectivePattern,
@@ -283,6 +269,10 @@ async function main(): Promise<number> {
         config.rg_options,
       )) {
         if (allNodes.length >= config.max_nodes) break;
+        if (config.fuzzy) {
+          // Post-filter trigram-union candidates against the original pattern.
+          if (!verifyFuzzy(match.text, match.match_start, config.pattern!, 2)) continue;
+        }
         if (seenLines) {
           const key = `${rs.source.id}:${match.line}`;
           if (seenLines.has(key)) continue;
