@@ -14,6 +14,34 @@ import { getClient } from "../macro/agent/client.js";
 import type { CompactionQA } from "./tasks.js";
 
 const SCORER_MODEL = process.env.MDG_BENCH_SCORER_MODEL ?? "claude-haiku-4-5-20251001";
+const INTER_CALL_DELAY_MS = 300;
+
+function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
+
+function isRetryable(err: unknown): boolean {
+  const msg = (err as Error)?.message ?? "";
+  const status = (err as { status?: number })?.status;
+  if (status === 429 || status === 529 || status === 503) return true;
+  return /rate.?limit|overload|ECONNRESET|ETIMEDOUT|temporar/i.test(msg);
+}
+
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5): Promise<T> {
+  let backoff = 2000;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt < maxRetries && isRetryable(err)) {
+        process.stderr.write(`  [scoring retry ${attempt + 1}] sleeping ${backoff}ms\n`);
+        await sleep(backoff);
+        backoff *= 2;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("withRetry exhausted");
+}
 
 export interface QAResult {
   question: string;
@@ -49,7 +77,8 @@ export async function scoreCompaction(compaction: string, qas: CompactionQA[]): 
   const results: QAResult[] = [];
   for (const qa of qas) {
     try {
-      const resp = await client.messages.create({
+      if (INTER_CALL_DELAY_MS > 0) await sleep(INTER_CALL_DELAY_MS);
+      const resp = await withRetry(() => client.messages.create({
         model: SCORER_MODEL,
         system: SYS,
         max_tokens: 256,
@@ -60,7 +89,7 @@ export async function scoreCompaction(compaction: string, qas: CompactionQA[]): 
               `CONTEXT:\n\n${compaction}\n\n---\n\nQUESTION: ${qa.question}\n\nAnswer based ONLY on the context above.`,
           },
         ],
-      });
+      }));
       const answer = resp.content
         .filter((b: { type: string }) => b.type === "text")
         .map((b: { type: string; text?: string }) => b.text ?? "")

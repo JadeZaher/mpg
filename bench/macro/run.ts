@@ -75,6 +75,8 @@ async function runOne(task: TaskSpec, arm: "control" | "treatment"): Promise<Cel
       modelId: process.env.MDG_BENCH_MODEL ?? "claude-haiku-4-5-20251001",
       palacePath,
       cwd: FRACTAL_ROOT,
+      interTurnDelayMs: 500,
+      maxRetries: 5,
       onProgress: (p: { input: number; output: number; turn: number }) => {
         process.stderr.write(`  [${task.id}/${arm}] turn ${p.turn} | in=${p.input} out=${p.output}\n`);
       },

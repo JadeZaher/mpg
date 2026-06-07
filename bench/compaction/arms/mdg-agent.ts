@@ -58,6 +58,8 @@ export async function runMdgAgent(task: CompactionTask, corpusRoot: string): Pro
       maxTurns: 20,
       maxInputTokens: 50_000,
       cwd: corpusRoot,
+      interTurnDelayMs: 500,
+      maxRetries: 5,
     });
     return {
       arm: "mdg-agent",

@@ -31,6 +31,17 @@ export interface LoopOptions {
   maxTurns: number;
   maxInputTokens: number;
   onProgress?: (p: { input: number; output: number; turn: number }) => void;
+  /**
+   * Sleep N milliseconds between turns (after onProgress, before next
+   * messages.create). Keeps the loop under the Anthropic per-minute
+   * rate limits during bench runs. Default 0.
+   */
+  interTurnDelayMs?: number;
+  /**
+   * Maximum number of retries on a rate-limit (429) or transient error.
+   * Backoff doubles each time starting from 2s. Default 5.
+   */
+  maxRetries?: number;
 }
 
 export type HitCap = "turns" | "input_tokens" | "none";
@@ -56,6 +67,24 @@ function isTextBlock(b: ContentBlock): b is TextBlock {
 
 // ─── Main loop ────────────────────────────────────────────────────────────────
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((res) => setTimeout(res, ms));
+}
+
+/**
+ * Detect rate-limit / transient errors that should trigger backoff.
+ * Anthropic surfaces 429 as APIError with status === 429; 529 is the
+ * "overloaded" signal. Network resets surface as ECONNRESET. All
+ * three are worth retrying with exponential backoff.
+ */
+function isRetryable(err: unknown): boolean {
+  const msg = (err as Error)?.message ?? "";
+  const status = (err as { status?: number })?.status;
+  if (status === 429 || status === 529 || status === 503) return true;
+  if (/rate.?limit|overload|ECONNRESET|ETIMEDOUT|ECONNRESET|temporar/i.test(msg)) return true;
+  return false;
+}
+
 export async function runLoop(opts: LoopOptions): Promise<LoopResult> {
   const {
     client,
@@ -67,6 +96,8 @@ export async function runLoop(opts: LoopOptions): Promise<LoopResult> {
     maxInputTokens,
     onProgress,
     systemPrompt,
+    interTurnDelayMs = 0,
+    maxRetries = 5,
   } = opts;
 
   // Accumulate conversation history.
@@ -105,13 +136,27 @@ export async function runLoop(opts: LoopOptions): Promise<LoopResult> {
     };
 
     let response: Awaited<ReturnType<typeof client.messages.create>>;
-    try {
-      response = await client.messages.create(params);
-    } catch (err) {
-      // Surface API errors as the final text so the driver can record them.
-      finalText = `[error] API call failed: ${(err as Error).message}`;
-      hitCap = "none";
-      break;
+    let attempt = 0;
+    let backoffMs = 2000;
+    while (true) {
+      try {
+        response = await client.messages.create(params);
+        break;
+      } catch (err) {
+        if (isRetryable(err) && attempt < maxRetries) {
+          attempt++;
+          const wait = backoffMs;
+          backoffMs *= 2;
+          process.stderr.write(
+            `  [rate-limit retry ${attempt}/${maxRetries}] sleeping ${wait}ms after: ${(err as Error).message}\n`,
+          );
+          await sleep(wait);
+          continue;
+        }
+        finalText = `[error] API call failed: ${(err as Error).message}`;
+        hitCap = "none";
+        return { finalText, inputTokens, outputTokens, toolCalls, turns, hitCap };
+      }
     }
 
     turns++;
@@ -119,6 +164,11 @@ export async function runLoop(opts: LoopOptions): Promise<LoopResult> {
     outputTokens += response.usage.output_tokens;
 
     onProgress?.({ input: inputTokens, output: outputTokens, turn: turns });
+
+    // Inter-turn throttle to stay under per-minute rate limits.
+    if (interTurnDelayMs > 0) {
+      await sleep(interTurnDelayMs);
+    }
 
     // Collect text blocks for potential final answer.
     const textBlocks = response.content.filter(isTextBlock);

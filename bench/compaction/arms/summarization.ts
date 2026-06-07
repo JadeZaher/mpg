@@ -18,6 +18,27 @@ import type { CompactionTask } from "../tasks.js";
 const MAX_INPUT_CHARS = 200_000; // ~50k tokens worth of retrieved context
 const MODEL = process.env.MDG_BENCH_MODEL ?? "claude-haiku-4-5-20251001";
 
+function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
+function isRetryable(err: unknown): boolean {
+  const msg = (err as Error)?.message ?? "";
+  const status = (err as { status?: number })?.status;
+  if (status === 429 || status === 529 || status === 503) return true;
+  return /rate.?limit|overload|ECONNRESET|ETIMEDOUT|temporar/i.test(msg);
+}
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5): Promise<T> {
+  let backoff = 2000;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try { return await fn(); } catch (err) {
+      if (attempt < maxRetries && isRetryable(err)) {
+        process.stderr.write(`  [summarization retry ${attempt + 1}] sleeping ${backoff}ms\n`);
+        await sleep(backoff); backoff *= 2; continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("withRetry exhausted");
+}
+
 function approxTokens(s: string): number { return Math.ceil(s.length / 4); }
 
 export interface ArmResult {
@@ -58,12 +79,12 @@ export async function runSummarization(task: CompactionTask, corpusRoot: string)
       `BUDGET: ${task.budget_tokens} tokens (hard cap).\n\n` +
       `RETRIEVED CONTENT (file:line:text from ripgrep):\n\n${retrieved}\n\n` +
       `Produce the compaction now. Output ONLY the compaction text.`;
-    const resp = await client.messages.create({
+    const resp = await withRetry(() => client.messages.create({
       model: MODEL,
       system: sys,
       max_tokens: Math.min(8192, Math.ceil(task.budget_tokens * 1.2)),
       messages: [{ role: "user", content: user }],
-    });
+    }));
     const text = resp.content
       .filter((b: { type: string }) => b.type === "text")
       .map((b: { type: string; text?: string }) => b.text ?? "")

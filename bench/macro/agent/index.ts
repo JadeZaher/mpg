@@ -54,6 +54,13 @@ export interface RunOptions {
   cwd?: string;
   /** Called after each turn with cumulative token totals. */
   onProgress?: (p: { input: number; output: number; turn: number }) => void;
+  /**
+   * Sleep N ms between turns to stay under Anthropic rate limits.
+   * Default 0 for macro (small tasks); multi-turn driver bumps to 750.
+   */
+  interTurnDelayMs?: number;
+  /** Max retries on 429/529/transient errors. Default 5. */
+  maxRetries?: number;
 }
 
 export interface RunOutput {
@@ -146,6 +153,8 @@ export async function runAgent(opts: RunOptions): Promise<RunOutput> {
     systemPrompt: arm === "treatment" ? TREATMENT_SYSTEM_PROMPT : CONTROL_SYSTEM_PROMPT,
     taskPrompt: opts.taskPrompt,
     maxTurns,
+    interTurnDelayMs: opts.interTurnDelayMs ?? 0,
+    maxRetries: opts.maxRetries ?? 5,
     maxInputTokens,
     onProgress,
   });

@@ -186,11 +186,18 @@ async function runOne(
     const result = await agent.runAgent({
       taskPrompt,
       arm,
-      maxTurns: 30,
-      maxInputTokens: 100_000,
+      // Lower than before. 30 turns × 100k input tokens was too generous —
+      // a stuck scenario could spend $$$. 15 turns × 60k is plenty for
+      // 3-4 related questions to be answered.
+      maxTurns: 15,
+      maxInputTokens: 60_000,
       modelId,
       palacePath,
       cwd: FRACTAL_ROOT,
+      // 750 ms between turns: Anthropic's per-minute limits are ~50
+      // RPM on most accounts; 1.3 turns/sec keeps us comfortable.
+      interTurnDelayMs: 750,
+      maxRetries: 5,
       onProgress: (p: { input: number; output: number; turn: number }) => {
         process.stderr.write(
           `  [${scenario.id}/${arm}] turn ${p.turn} | in=${p.input} out=${p.output}\n`,
