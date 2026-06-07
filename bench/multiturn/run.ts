@@ -80,31 +80,13 @@ interface AggregateRow {
 }
 
 // ─── System prompts ──────────────────────────────────────────────────────────
-
-const CONTROL_SYSTEM_PROMPT = `You are a precise engineering assistant running inside an automated multi-turn benchmark.
-You will receive a prompt containing several numbered questions (Q1, Q2, Q3, …).
-Answer each question in order using the available tools (read, grep, write, bash).
-Format your final answer with clearly labelled sections: A1:, A2:, A3:, and so on.
-Be concise — write only what each question asks for.
-Do not add explanations or commentary beyond what is required.`;
-
-const TREATMENT_SYSTEM_PROMPT = `You are a precise engineering assistant running inside an automated multi-turn benchmark.
-You will receive a prompt containing several numbered questions (Q1, Q2, Q3, …).
-
-You have read/grep/write/bash tools PLUS five mdg tools that give you token-budgeted, stashable context:
-  - mdg_search: returns match nodes with sized pre/post windows. Supports effort (quick|normal|deep), max_nodes, pagination, and scoping via from/compose.
-  - mdg_stash: saves a search result under a name + tags. Future searches can scope to a stash.
-  - mdg_list_stashes / mdg_get_stash / mdg_drop_stash: inspect and manage stashes.
-
-MULTI-TURN STASHING STRATEGY — THIS IS CRITICAL:
-1. When you answer Q1, immediately mdg_stash the key facts under a descriptive name (e.g. "q1-entity-hierarchy").
-2. When answering Q2 and beyond, first call mdg_get_stash or scope mdg_search via from:"<stash-name>" to reuse earlier findings instead of re-searching.
-3. This is the ENTIRE POINT of the bench: early stashes should make later answers cheaper and faster.
-4. Use small budgets: max_nodes=5, effort="quick" for the first probe. Paginate to stop early.
-5. Reserve "read" for very short files or when you genuinely need more context than mdg returns.
-
-Format your final answer with clearly labelled sections: A1:, A2:, A3:, and so on.
-Be concise — write only what each question asks for.`;
+//
+// Note: the actual system prompts applied to runAgent live in
+// bench/macro/agent/index.ts (CONTROL_SYSTEM_PROMPT / TREATMENT_SYSTEM_PROMPT
+// + ANSWER_FORMAT_BLOCK). They include explicit format-yielding rules
+// that respect the A1:/A2:/A3:/A4: structure this driver puts in the
+// task prompt. Previously-defined-here constants were dead code and
+// have been removed.
 
 // ─── Task prompt builder ──────────────────────────────────────────────────────
 

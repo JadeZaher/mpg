@@ -27,18 +27,24 @@ export interface ArmResult {
   error?: string;
 }
 
-const SYSTEM_PROMPT_SUFFIX =
-  "\n\nYOU ARE PRODUCING A MEMORY COMPACTION.\n" +
-  "You have read/grep/write/bash + five mdg tools (search, stash, list, get, drop).\n\n" +
-  "GUIDANCE for using mdg efficiently when compacting:\n" +
-  "1. Start with mdg_search at effort: 'scan' to get a time-ordered index of every hit on " +
-  "the topic — many small nodes, ~60 tokens each, sorted recent-first.\n" +
-  "2. Stash the index, then drill into specific files with mdg_search at effort: 'quick' or 'normal' " +
-  "for richer context only where you actually need it.\n" +
-  "3. Multiple targeted parallel searches beat one huge deep search.\n" +
-  "4. Your FINAL response IS the compaction. It must fit within the requested token budget. " +
-  "Do not include preamble or explanation outside the compaction. Preserve concrete facts " +
-  "(file paths, identifiers, version numbers, hashing schemes, function names).";
+// Explicit delimiters so we can robustly extract the compaction from
+// whatever preamble the model emits. Previously the model produced
+// 15-token "compaction generated" status messages and the bench
+// scored those as the "compaction." Delimiters + system prompt
+// requirements that match the macro harness's new ANSWER_FORMAT_BLOCK
+// make the agent emit the actual content.
+const COMPACTION_OPEN = "<compaction>";
+const COMPACTION_CLOSE = "</compaction>";
+
+export function extractCompaction(text: string): string {
+  const openIdx = text.indexOf(COMPACTION_OPEN);
+  const closeIdx = text.indexOf(COMPACTION_CLOSE);
+  if (openIdx >= 0 && closeIdx > openIdx) {
+    return text.slice(openIdx + COMPACTION_OPEN.length, closeIdx).trim();
+  }
+  // Fall back to raw final text if no delimiters present.
+  return text.trim();
+}
 
 export async function runMdgAgent(task: CompactionTask, corpusRoot: string): Promise<ArmResult> {
   const t0 = Date.now();
@@ -46,11 +52,20 @@ export async function runMdgAgent(task: CompactionTask, corpusRoot: string): Pro
     const taskPrompt =
       `Produce a memory compaction about the following topic.\n\n` +
       `TOPIC: ${task.topic}\n\n` +
-      `BUDGET: ${task.budget_tokens} tokens (hard cap on your final response).\n` +
+      `BUDGET: ${task.budget_tokens} tokens (hard cap on the compaction text).\n` +
       `CORPUS: search the contents of \`${corpusRoot}\` using your tools. ` +
       `The corpus spans multiple projects' conductor tracks (markdown specs + plans + JSON metadata).\n\n` +
-      `When you have gathered what you need, produce the compaction as your final response and stop.\n` +
-      SYSTEM_PROMPT_SUFFIX;
+      `OUTPUT FORMAT (critical):\n` +
+      `When you have gathered what you need, write your FINAL response as a single tagged block:\n\n` +
+      `${COMPACTION_OPEN}\n` +
+      `(the compaction text here — about ${task.budget_tokens} tokens; preserve concrete facts like file paths, identifiers, version numbers, function names; no preamble outside the tags)\n` +
+      `${COMPACTION_CLOSE}\n\n` +
+      `Do NOT write things like "I have produced the compaction" instead of the compaction. ` +
+      `The text between ${COMPACTION_OPEN} and ${COMPACTION_CLOSE} is what gets scored — it must contain the actual content.\n\n` +
+      `GUIDANCE for using mdg efficiently:\n` +
+      `1. Start with mdg_search at effort: 'scan' (with clip_chars: 30 if available) to get a time-ordered index of every hit on the topic.\n` +
+      `2. Stash the index, then drill into specific files with mdg_search at effort: 'quick' or 'normal' for richer context only where you actually need it.\n` +
+      `3. Multiple targeted parallel searches beat one huge deep search.`;
 
     const result = await runAgent({
       taskPrompt,
@@ -61,10 +76,12 @@ export async function runMdgAgent(task: CompactionTask, corpusRoot: string): Pro
       interTurnDelayMs: 500,
       maxRetries: 5,
     });
+    // Extract from the tagged block; falls back to full text if untagged.
+    const compaction = extractCompaction(result.finalText);
     return {
       arm: "mdg-agent",
-      compaction: result.finalText,
-      compaction_tokens: approxTokens(result.finalText),
+      compaction,
+      compaction_tokens: approxTokens(compaction),
       input_tokens: result.inputTokens,
       output_tokens: result.outputTokens,
       ms: Date.now() - t0,

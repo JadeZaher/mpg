@@ -87,26 +87,45 @@ const __filename = fileURLToPath(import.meta.url);
 // bench/macro/agent -> bench/macro -> bench -> repo root
 const REPO_ROOT = resolve(dirname(__filename), "..", "..", "..");
 
+// ─── System prompts ──────────────────────────────────────────────────────────
+//
+// Critical: these prompts MUST yield to format requirements in the
+// task prompt. The previous version said "be concise — reply with your
+// result and nothing else" which the model interpreted as "skip
+// structured output and just say done." That collision dropped multi-
+// turn pass-rate to 0% even though the agent converged in half the
+// turns with mdg. Compaction's mdg-agent arm hit the same wall (15-
+// token "compaction generated" instead of the actual compaction).
+//
+// New rule: brevity applies to PROSE around the answer, not to the
+// answer itself. If the task specifies a format, the model must
+// produce it in full.
+
+const ANSWER_FORMAT_BLOCK = `OUTPUT REQUIREMENTS (read carefully — your benchmark score depends on this):
+- If the task prompt specifies an output format (e.g. "respond with A1: ... A2: ..." or "your final response IS the compaction"), your FINAL message MUST contain that format in full. Do not summarize, abbreviate, or say "done" — produce the actual output the task asks for.
+- Do not include preamble like "Here is my answer:" or "I have completed the task:" — start directly with the required output.
+- Be concise WITHIN the format. Skip ornamental commentary, but do not skip required sections.
+- After your final message you cannot continue. Make sure every required answer section is present before you stop.`;
+
 const CONTROL_SYSTEM_PROMPT = `You are a precise engineering assistant running inside an automated benchmark.
-Complete the task described by the user using the available tools (read, grep, write, bash).
-Be concise — write only what the task requires.
-Do not add explanations or commentary unless specifically asked.
-When you have finished the task, reply with your result and nothing else.`;
+Complete the task using the available tools (read, grep, write, bash).
+
+${ANSWER_FORMAT_BLOCK}`;
 
 const TREATMENT_SYSTEM_PROMPT = `You are a precise engineering assistant running inside an automated benchmark.
-Complete the task described by the user efficiently. You have read/grep/write/bash tools PLUS five mdg tools that give you token-budgeted, paginated, stashable context:
-  - mdg_search: returns nodes (match + sized pre/post window), not whole files. Supports effort (quick|normal|deep), max_nodes, pagination (page/page_size), and scoping via from/compose.
+You have read/grep/write/bash tools PLUS five mdg tools that give you token-budgeted, paginated, stashable context:
+  - mdg_search: returns nodes (match + sized pre/post window), not whole files. Supports effort (scan|quick|normal|deep), max_nodes, --clip <N> for sub-line snippets, --sort recent|oldest, pagination (page/page_size), and scoping via from/compose.
   - mdg_stash: saves a search result under a name + tags. Future searches can scope to a stash with from: "<name>".
   - mdg_list_stashes / mdg_get_stash / mdg_drop_stash: inspect and clean up.
 
-HOW TO BEAT A BARE READ+GREP SETUP ON TOKEN COST:
-1. Prefer mdg_search over read+grep when you need context around a match. mdg gives you the match plus N tokens on either side — usually enough to answer without reading the whole file.
-2. Use small budgets: max_nodes=5, effort="quick" for the first probe. Bump only when the small node didn't carry enough context.
-3. Use pagination: page=1, page_size=3 so you can stop early when you have what you need. Check pagination.has_next before paging further.
-4. Stash relevant hits with mdg_stash before reading more. Future searches scoped via from: "<name>" are much cheaper than re-searching the whole tree.
-5. Reserve "read" for very short files or when you genuinely need surrounding code beyond what mdg returns.
+HOW TO USE MDG EFFICIENTLY:
+1. Start with mdg_search at effort: "scan" (and clip_chars: 30 if available) to get a cheap hit-list. Most questions need just an index, not deep context.
+2. If the scan looks ambiguous, bump to effort: "quick" or "normal" on the SPECIFIC files that matter — not the whole tree.
+3. Stash relevant hits with mdg_stash before reading more. Subsequent mdg_search with from: "<stash-name>" is cheaper than re-searching.
+4. Reserve "read" for short files or when you genuinely need surrounding code beyond what mdg returns.
+5. Use grep for one-word lookups where you only need a file:line list; use mdg when you need context.
 
-Be concise — write only what the task requires. Do not add explanations or commentary unless specifically asked. When you have finished the task, reply with your result and nothing else.`;
+${ANSWER_FORMAT_BLOCK}`;
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
