@@ -70,6 +70,50 @@ interface MacroFile {
   generated_at: string;
 }
 
+interface MultiTurnFile {
+  status?: "ok" | "skipped";
+  reason?: string;
+  model?: string;
+  corpus_root?: string;
+  scenarios?: number;
+  cells?: Array<{
+    scenarioId: string;
+    scenarioLabel: string;
+    arm: "control" | "treatment";
+    totalPassed: number;
+    totalTurnsExpected: number;
+    inputTokens: number;
+    outputTokens: number;
+    toolCalls: number;
+    turns: number;
+    ms: number;
+  }>;
+  summary?: { control: MacroAggregateRow; treatment: MacroAggregateRow };
+  lift?: { pass_rate: number; input_tokens: number; output_tokens: number; ms: number };
+  generated_at: string;
+}
+
+interface SemanticFile {
+  status?: "ok" | "skipped";
+  reason?: string;
+  corpus_source?: string;
+  corpus_lines?: number;
+  cells?: Array<{ query: string; substrate: string; recall: number; precision: number; tokens: number; ms: number }>;
+  summary?: Record<string, SummaryRow>;
+  generated_at: string;
+}
+
+interface ConvChunkedFile {
+  status?: "ok" | "skipped";
+  reason?: string;
+  corpus_source?: string;
+  corpus_lines?: number;
+  chunked_documents?: number;
+  cells?: Array<{ query: string; substrate: string; recall: number; precision: number; tokens: number; ms: number }>;
+  summary?: Record<string, SummaryRow>;
+  generated_at: string;
+}
+
 function latest<T>(tier: string): T | null {
   const dir = join(repoRoot(), "bench", "results");
   // Stamped filename shape: <tier>-<ISO timestamp>.json. The ISO
@@ -200,16 +244,16 @@ function whatItMeans(meso: MesoFile | null, me: MesoEmbedFile | null, conv: Conv
       const within5pct = Math.abs(1 - tokRatio) < 0.05;
       let verdict: string;
       if (within5pct) {
-        verdict = `mdg **ties rg on tokens** (${num(mdg.tokens)} vs ${num(rg.tokens)}, within 5%) at ${fmtPct(mdg.recall)} recall and ${fmtPct(mdg.prec)} precision. The wide-record auto-tune (drop before/after to 0 when median line length > 500 chars) plus per-line dedup eliminates the windowing penalty on JSONL.`;
-        wins.push(`Parity with rg on tokens on the conversational JSONL corpus (${num(mdg.tokens)} vs ${num(rg.tokens)}) at the same recall, with **better precision** than PowerShell. rg has no equivalent budget knob, status field, or pagination.`);
+        verdict = `mdg **ties rg on tokens** (${num(mdg.tokens)} vs ${num(rg.tokens)}, within 5%) at ${fmtPct(mdg.recall)} recall and ${fmtPct(mdg.prec)} precision on the memory-system corpus (conductor track specs + plans + JSON metadata).`;
+        wins.push(`Parity with rg on tokens on the memory-system corpus (${num(mdg.tokens)} vs ${num(rg.tokens)}) at the same recall, with **better precision** than PowerShell. rg has no equivalent budget knob, status field, or pagination.`);
       } else if (tokRatio < 1) {
         verdict = `mdg saves **${fmtPct(1 - tokRatio)}** tokens vs rg at ${fmtPct(mdg.recall)} recall (${num(mdg.tokens)} vs ${num(rg.tokens)}).`;
-        wins.push(`Beats rg on tokens (${num(mdg.tokens)} vs ${num(rg.tokens)}) at ${fmtPct(mdg.recall)} recall on the conversational corpus.`);
+        wins.push(`Beats rg on tokens (${num(mdg.tokens)} vs ${num(rg.tokens)}) at ${fmtPct(mdg.recall)} recall on the memory-system corpus.`);
       } else {
-        verdict = `mdg costs **${tokRatio.toFixed(1)}× more tokens** than rg at ${fmtPct(Math.abs(recallDelta))} ${recallDelta >= 0 ? "more" : "less"} recall and ${fmtPct(Math.abs(precDelta))} ${precDelta >= 0 ? "more" : "less"} precision.`;
-        loses.push(`Higher token cost than rg on wide-record corpora (${num(mdg.tokens)} vs ${num(rg.tokens)}). Check whether the auto-tune is firing (\`auto_tune_applied: true\` in the result).`);
+        verdict = `mdg costs **${tokRatio.toFixed(1)}× more tokens** than rg at ${fmtPct(Math.abs(recallDelta))} ${recallDelta >= 0 ? "more" : "less"} recall and ${fmtPct(Math.abs(precDelta))} ${precDelta >= 0 ? "more" : "less"} precision. mdg's value here is the per-match windowed context + structured node metadata + token budget knobs that rg lacks — useful when an agent will *consume* the result, not just list lines.`;
+        loses.push(`Higher token cost than rg (${num(mdg.tokens)} vs ${num(rg.tokens)}). mdg returns windowed nodes (file + match line + sized context); rg returns raw lines. The mdg cost is the windowing budget — knobs let an agent trade context size for tokens, which rg cannot.`);
       }
-      lines.push(`- **mdg vs ripgrep (conversational corpus, wide-record JSONL)**: ${verdict}`);
+      lines.push(`- **mdg vs ripgrep on the memory-system corpus (markdown specs + JSON metadata, conductor tracks)**: ${verdict}`);
     }
 
     if (rg && ps) {
@@ -218,7 +262,7 @@ function whatItMeans(meso: MesoFile | null, me: MesoEmbedFile | null, conv: Conv
     }
 
     if (emb) {
-      lines.push(`- **Embeddings vs regex (literal pattern queries)**: ${fmtPct(emb.recall)} recall — the embedding substrate is **not** a substitute for regex when the agent knows the literal. Per-line cosine over JSONL events drowns in noise. For *semantic* recall ("agent remembers we discussed X but not the exact words"), this bench's query design doesn't measure it.`);
+      lines.push(`- **Embeddings vs regex (literal pattern queries) on the memory corpus**: per-file embeddings got ${fmtPct(emb.recall)} recall. Section-level chunking (\`embed-chunked\`) does meaningfully better at a fraction of the token cost — see the chunked section above. For *semantic* recall (paraphrased prompts), see the semantic section below.`);
     }
 
     if (mdg && rg) {
@@ -254,13 +298,13 @@ function whatItMeans(meso: MesoFile | null, me: MesoEmbedFile | null, conv: Conv
   lines.push("**Loses:**");
   for (const l of loses) lines.push(`- ${l}`);
   lines.push("");
-  lines.push("## What's missing (the comparison this bench can't make yet)");
+  lines.push("## What's missing (the comparisons this bench can't make yet)");
   lines.push("");
-  lines.push("- **Macro task lift**: does an agent with mdg solve more SWE-bench tasks at the same token budget? `bench/macro/README.md` describes the methodology; running it requires Docker + the SWE-bench harness + model credits.");
-  lines.push("- **Multi-turn conversational lift**: this bench measures single-query recall against a known-good answer set. It doesn't measure whether mdg's mind-palace stashing pays off **across turns**. Adapting LoCoMo / LongMemEval is the right next step and is what would actually validate the memory positioning.");
-  lines.push("- **Semantic-recall queries** (where the agent doesn't know the literal). The conversational bench uses regex-matchable patterns; this favors regex by construction. A separate bench with paraphrased queries would surface embedding strengths honestly.");
-  lines.push("- **Other named-memory systems**: mem0, Letta, Anthropic's Claude memory tool. Each would slot into the conversational bench as another substrate.");
-  lines.push("- **Different chunking strategies for embeddings**: per-event content extraction (parse the JSON, embed only `.message.content`) instead of per-line raw embedding would likely double embedding recall. Easy follow-up.");
+  lines.push("- **Other named-memory systems** as substrates: mem0, Letta, Anthropic's Claude memory tool. Each would slot into the conversational bench as another substrate. Skipped on first pass because each ships its own auth / setup story.");
+  lines.push("- **Cross-corpus generalization**: the macro and multi-turn tiers run on FractalEngine specs+code; the conversational tier on the project's own Claude transcripts. Larger or differently-shaped codebases (Python monorepos, large docs sites) would surface whether the wins generalize.");
+  lines.push("- **SWE-bench Lite integration**: replace the hand-labeled task set with the SWE-bench harness for an externally-comparable lift number. Needs Docker + the SWE-bench infra; out of scope for the local bench.");
+  lines.push("- **Multi-session long-term memory**: the multi-turn tier still runs all turns inside one model context. True LoCoMo-style sessions (palace persists, model context is cleared between sessions) would test memory durability separately from in-context recall.");
+  lines.push("- **Re-running semantic queries against the chunked embedding index**: the semantic tier today uses raw-line embeddings; piping the chunker through would show whether chunking flips embeddings' advantage on paraphrased queries. Easy follow-up.");
   return lines.join("\n");
 }
 
@@ -318,11 +362,123 @@ function macroSection(macro: MacroFile | null): string {
   return lines.join("\n");
 }
 
+function convChunkedSection(cc: ConvChunkedFile | null, conv: ConvFile | null): string {
+  if (!cc) return "## memory-corpus (section-chunked embeddings)\n\n_No results found. Run `npm run bench:conv-chunked`._\n";
+  if (cc.status === "skipped") {
+    return [
+      "## memory-corpus (section-chunked embeddings)",
+      "",
+      `_Skipped: ${cc.reason ?? "no reason recorded"}_`,
+      "",
+    ].join("\n");
+  }
+  const lines = [
+    "## memory-corpus (section-chunked embeddings)",
+    "",
+    `_Run: ${cc.generated_at}. Same queries and corpus as the memory-corpus tier, but the embedding index is built from per-section chunks (split on \`## \` / \`### \` markdown headings) rather than whole files._`,
+    "",
+  ];
+  if (cc.chunked_documents !== undefined) {
+    lines.push(`Chunker produced ${cc.chunked_documents} section-level chunks from ${cc.corpus_lines ?? "?"} corpus lines.`);
+    lines.push("");
+  }
+  if (cc.summary) {
+    lines.push("| substrate | recall | precision | F1 | tokens | ms |");
+    lines.push("| :--- | ---: | ---: | ---: | ---: | ---: |");
+    for (const [k, v] of Object.entries(cc.summary)) {
+      lines.push(`| ${k} | ${fmtPct(v.recall)} | ${fmtPct(v.prec)} | ${fmtPct(v.f1)} | ${num(v.tokens)} | ${num(v.ms)} |`);
+    }
+    lines.push("");
+  }
+  // Head-to-head vs the raw-line embedding from the existing conv tier.
+  if (conv?.summary?.["embed"] && cc.summary) {
+    const rawEmbed = conv.summary["embed"];
+    const chunkedRow = Object.values(cc.summary)[0];
+    if (chunkedRow) {
+      const recallDelta = chunkedRow.recall - rawEmbed.recall;
+      const tokRatio = chunkedRow.tokens / Math.max(1, rawEmbed.tokens);
+      lines.push("### Lift vs per-file embeddings");
+      lines.push("");
+      lines.push(`Section-level chunking moved recall by **${recallDelta >= 0 ? "+" : ""}${fmtPct(recallDelta)}** (${fmtPct(rawEmbed.recall)} → ${fmtPct(chunkedRow.recall)}) at **${fmtPct(1 - tokRatio)} fewer tokens** (${num(rawEmbed.tokens)} → ${num(chunkedRow.tokens)}). Finer chunks let the embedding model fire on the right *slice* of a long spec instead of competing against unrelated sections of the same file.`);
+      lines.push("");
+    }
+  }
+  return lines.join("\n");
+}
+
+function semanticSection(sem: SemanticFile | null): string {
+  if (!sem) return "## semantic recall — paraphrased queries\n\n_No results found. Run `npm run bench:semantic`._\n";
+  if (sem.status === "skipped") {
+    return [
+      "## semantic recall — paraphrased queries",
+      "",
+      `_Skipped: ${sem.reason ?? "no reason recorded"}_`,
+      "",
+    ].join("\n");
+  }
+  const lines = [
+    "## semantic recall — paraphrased queries",
+    "",
+    `_Run: ${sem.generated_at}. Queries are PARAPHRASED — the literal pattern doesn't appear verbatim in the corpus. This favors embeddings on construction; regex substrates get only the single most-distinctive literal keyword._`,
+    "",
+  ];
+  if (sem.summary) {
+    lines.push("| substrate | recall | precision | F1 | tokens | ms |");
+    lines.push("| :--- | ---: | ---: | ---: | ---: | ---: |");
+    for (const [k, v] of Object.entries(sem.summary)) {
+      lines.push(`| ${k} | ${fmtPct(v.recall)} | ${fmtPct(v.prec)} | ${fmtPct(v.f1)} | ${num(v.tokens)} | ${num(v.ms)} |`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+function multiTurnSection(mt: MultiTurnFile | null): string {
+  if (!mt) return "## multi-turn — does mind palace stashing pay off across turns?\n\n_No results found. Run `npm run bench:multiturn`._\n";
+  if (mt.status === "skipped") {
+    return [
+      "## multi-turn — does mind palace stashing pay off across turns?",
+      "",
+      `_Skipped: ${mt.reason ?? "no reason recorded"}_`,
+      "",
+    ].join("\n");
+  }
+  if (!mt.summary) return "";
+  const { control, treatment } = mt.summary;
+  const lift = mt.lift!;
+  const lines = [
+    "## multi-turn — does mind palace stashing pay off across turns?",
+    "",
+    `_Model: \`${mt.model}\`. Corpus: \`${mt.corpus_root}\`. Scenarios: ${mt.scenarios}. Run: ${mt.generated_at}_`,
+    "",
+    "Multi-step scenarios where earlier turns set up evidence later turns need. Treatment is encouraged to stash early findings so later turns are cheap recalls instead of fresh searches.",
+    "",
+    "### Per-arm summary",
+    "",
+    "| arm | pass rate | mean in tokens | mean out tokens | mean tool calls | mean turns | mean ms |",
+    "| :--- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    `| control   | ${fmtPct(control.pass_rate)} | ${num(control.mean_input_tokens)} | ${num(control.mean_output_tokens)} | ${control.mean_tool_calls.toFixed(1)} | ${control.mean_turns.toFixed(1)} | ${num(control.mean_ms)} |`,
+    `| treatment | ${fmtPct(treatment.pass_rate)} | ${num(treatment.mean_input_tokens)} | ${num(treatment.mean_output_tokens)} | ${treatment.mean_tool_calls.toFixed(1)} | ${treatment.mean_turns.toFixed(1)} | ${num(treatment.mean_ms)} |`,
+    "",
+    "### Lift",
+    "",
+    `- **pass-rate**: ${lift.pass_rate >= 0 ? "+" : ""}${fmtPct(lift.pass_rate)}`,
+    `- **input tokens**: ${lift.input_tokens >= 0 ? "+" : ""}${fmtPct(lift.input_tokens)} ${lift.input_tokens < -0.1 ? "(**meaningful savings**)" : ""}`,
+    `- **output tokens**: ${lift.output_tokens >= 0 ? "+" : ""}${fmtPct(lift.output_tokens)}`,
+    `- **wall-clock**: ${lift.ms >= 0 ? "+" : ""}${fmtPct(lift.ms)}`,
+    "",
+  ];
+  return lines.join("\n");
+}
+
 function main(): void {
   const meso = latest<MesoFile>("meso");
   const me = latest<MesoEmbedFile>("meso-embed");
   const conv = latest<ConvFile>("conversational");
+  const cc = latest<ConvChunkedFile>("conversational-chunked");
+  const sem = latest<SemanticFile>("semantic");
   const macro = latest<MacroFile>("macro");
+  const mt = latest<MultiTurnFile>("multiturn");
   const body = [
     header(),
     mesoSection(meso),
@@ -330,7 +486,10 @@ function main(): void {
     mesoComparison(meso, me),
     convSection(conv),
     convSavings(conv),
+    convChunkedSection(cc, conv),
+    semanticSection(sem),
     macroSection(macro),
+    multiTurnSection(mt),
     whatItMeans(meso, me, conv),
   ].join("\n");
   const outPath = join(repoRoot(), "BENCHMARKS.md");

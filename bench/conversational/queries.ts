@@ -1,22 +1,16 @@
 /**
- * Queries for the conversational benchmark.
+ * Queries for the memory-corpus benchmark.
  *
- * Each query has a regex `pattern` and a semantic `prompt`. The
- * ground-truth answer set is derived AT RUN TIME by literal grep on
- * the (frozen) corpus snapshot: rg's matches define the canonical
- * answer set.
+ * Corpus: oasis-sleek conductor tracks (markdown specs + plans, JSON
+ * metadata). Patterns are chosen to exist verbatim in the corpus so
+ * recall is a well-defined number.
  *
- * This makes rg the baseline against which everything else is
- * measured (rg gets 100% recall by definition). The interesting
- * questions become:
- *   - Does mdg cost fewer tokens to surface the same answer?
- *   - Does PowerShell match rg on a Windows host?
- *   - Does the embedding substrate recover hits when queried with
- *     a different (semantic) phrasing than the regex literal?
- *
- * The prompts are intentionally **not** verbatim restatements of the
- * pattern — they use surrounding vocabulary the model is likely to
- * have seen near the topic, the way an agent would phrase a recall.
+ * Each query has a regex `pattern` (fed to regex substrates) and a
+ * semantic `prompt` (fed to the embedding substrate). Ground truth is
+ * derived AT RUN TIME by `rg <pattern> <corpus_root>` — rg's matches
+ * define the canonical answer set, so rg gets 100% recall by definition
+ * and the interesting axes become token cost, precision, and how well
+ * embedding recovers literal hits when given a different phrasing.
  */
 
 export interface QuerySpec {
@@ -27,33 +21,33 @@ export interface QuerySpec {
 
 export const QUERIES: QuerySpec[] = [
   {
-    label: "expandGlobs Windows backslash bug",
-    pattern: "expandGlobs",
-    prompt: "the Windows path bug where fs.glob treats backslash as an escape",
+    label: "AvatarController endpoints",
+    pattern: "AvatarController",
+    prompt: "the controller that handles avatar registration, authentication, and CRUD endpoints",
   },
   {
-    label: "registering the MCP server with Claude Code",
-    pattern: "claude mcp add",
-    prompt: "registering the mdg MCP server with Claude Code at user scope",
+    label: "ProviderContext usage",
+    pattern: "ProviderContext",
+    prompt: "the unified context object passed to provider-aware handlers across the codebase",
   },
   {
-    label: "npm publish flow for v0.2.1",
-    pattern: "npm publish",
-    prompt: "publishing the v0.2.1 bug-fix to the npm registry",
+    label: "JWT Bearer authentication",
+    pattern: "JWT Bearer",
+    prompt: "how endpoints authenticate via signed bearer tokens",
   },
   {
-    label: "adding the transformers.js embedding library",
-    pattern: "Xenova",
-    prompt: "installing the Xenova transformers library for local embeddings",
+    label: "blockchain provider docs",
+    pattern: "blockchain",
+    prompt: "anywhere the design discusses on-chain or distributed-ledger provider integration",
   },
   {
-    label: "writeResult helper definition",
-    pattern: "writeResult",
-    prompt: "the helper that writes benchmark result JSON files under bench/results/",
+    label: "rate limiting design",
+    pattern: "rate.limit",
+    prompt: "where the architecture talks about request throttling or per-tenant limits",
   },
   {
-    label: "embedBatch helper",
-    pattern: "embedBatch",
-    prompt: "the batch embedding helper that processes texts sequentially",
+    label: "test coverage / strategy",
+    pattern: "test.*coverage|coverage.*test",
+    prompt: "where the docs lay out a testing strategy or coverage target",
   },
 ];

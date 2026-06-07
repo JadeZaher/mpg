@@ -19,7 +19,10 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeResult } from "../lib/runner.js";
+import { loadEnvFile } from "../lib/env.js";
 import { TASKS, FRACTAL_ROOT, ensureCorpus, scoreAnswer, type TaskSpec } from "./tasks/tasks.js";
+
+loadEnvFile();
 
 interface Cell {
   taskId: string;

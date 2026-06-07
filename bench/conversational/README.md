@@ -1,71 +1,76 @@
-# Conversational benchmark — Claude project memory archive
+# Memory-corpus benchmark (formerly "conversational")
 
 ## What this measures
 
-Real long-form conversational memory: 879 events of past Claude Code
-sessions in this very project's archive (`~/.claude/projects/<project>/*.jsonl`).
-The question we're answering: when an agent wants to recall something
-discussed in a past conversation, which retrieval substrate works best?
+Real memory-system content. Markdown specifications, JSON metadata,
+and supporting design docs — exactly what mem0, Letta, Anthropic's
+Claude memory tool, or a bespoke memory layer would actually store.
 
-## Substrates compared
-
-| Substrate | Why include it |
-| :--- | :--- |
-| **mdg** | The system under test. Token-budgeted, node-windowed regex. |
-| **ripgrep** (raw) | The fastest plain regex baseline. Returns whole lines — no context windowing, no token budget. |
-| **PowerShell `Select-String`** | What a Windows user does by default if they don't have rg. Line-oriented. |
-| **vector embeddings** (`Xenova/all-MiniLM-L6-v2`) | Semantic baseline. Top-k cosine over per-line documents. |
+mdg is **memory-system-independent**: it doesn't care which system
+holds the content, only that the content is markdown/JSON/code-like.
+So we test on what a memory system would store, not on the noisy raw
+transcripts a system has to filter first.
 
 ## Corpus
 
-`~/.claude/projects/C--Users-atooz-Programming-ai-utils-memory-markdowngraphcli/*.jsonl`
+Default: `C:/Users/atooz/Programming/Projects/oasis-sleek/conductor/tracks/`
 
-Each JSONL line is one transcript event (user prompt, assistant
-response, tool call, tool result, hook event, etc). Content lives
-inside `.message.content` or `.content`. This is **exactly** the kind
-of corpus an agent would have to recall against: structured but noisy,
-nested JSON wrapping natural language.
+- 34 conductor tracks
+- Each track has `spec.md`, `plan.md`, sometimes `metadata.json` plus
+  supplementary docs (RUNBOOK, CATALOG, etc.)
+- 72 total content files, ~9.6k lines, ~515 KB
 
-This is the worst case for line-oriented grep tools because matches are
-buried in JSON noise, and the best case for mdg because its
-token-windowed node returns trimmed, readable context.
+Override with `MDG_BENCH_CORPUS_ROOT=<path>` to point at a different
+conductor-style project. The macro and multi-turn tiers use a
+different project (FractalEngine) so we're not over-fitting bench
+findings to one codebase.
 
-## Ground-truth queries
+## Granularity
 
-Hand-labeled in `queries.ts`. Each query has:
+**File-level recall.** Each substrate returns the set of files it
+considers relevant for a query. This matches how a memory system
+exposes content (one "memory" = one document, not one line). It also
+makes the embedding substrate honest: per-file embeddings are cheap
+and natural for spec-sized documents.
 
-- `pattern` — regex fed to grep / mdg
-- `prompt` — semantic phrasing for the embedding model
-- `expected_uuids[]` — UUIDs of transcript events that are the right
-  answer set, identified by inspection
+The chunked variant (`run-chunked.ts`) splits markdown by `## ` /
+`### ` headings, producing finer-grained embeddings, and projects
+back to file-level recall for the metric.
 
-The events we hand-label are non-secret (all in this session, all
-already on disk in the user's archive — no new exposure).
+## Substrates
+
+| Substrate | Why include it |
+| :--- | :--- |
+| **mdg** | The system under test. Returns nodes (file + match line + token-windowed context). |
+| **ripgrep** (raw) | The fastest plain regex baseline. Returns whole matching lines from each file. |
+| **PowerShell `Select-String`** | The Windows-native baseline an agent would use if `rg` isn't installed. |
+| **vector embeddings** (`Xenova/all-MiniLM-L6-v2`) | Semantic baseline. Per-file cosine. |
+
+## Queries
+
+`queries.ts` defines 6 patterns chosen so they exist verbatim in the
+corpus — ground truth is then well-defined (the set of files where rg
+matches). The interesting axes become:
+- **Precision** (does the substrate return only relevant files?)
+- **Token cost** (how much would an agent pay to consume the result?)
+- **For embeddings specifically**: can it recover the rg files when
+  given a SEMANTIC prompt instead of the literal pattern? The
+  semantic tier (`bench/semantic/`) tests that case explicitly.
 
 ## Metrics
 
 | Metric | Definition |
 | :--- | :--- |
-| `recall` | `\|expected ∩ returned\| / \|expected\|` |
-| `precision` | `\|expected ∩ returned\| / \|returned\|` |
+| `recall` | `\|expected_files ∩ returned_files\| / \|expected_files\|` |
+| `precision` | `\|expected_files ∩ returned_files\| / \|returned_files\|` |
 | `F1` | Harmonic mean. |
-| `tokens` | Approximate token cost of the returned context (the bytes an agent would have to pay to consume the answer). |
+| `tokens` | Approximate token cost of the returned content. |
 | `ms` | Wall-clock. |
 
-Token cost is the load-bearing axis: vector top-k and raw grep can
-both hit 100% recall, but the agent has to **read** the result, and
-that reads is what costs.
+## What this bench does NOT measure
 
-## What we are NOT testing
-
-- **Concurrency** (one query at a time).
-- **Index freshness** (corpus is frozen for the run).
-- **Streaming costs** (rg is reading the JSONL fresh every time; mdg
-  too; the embedding index is built once up front and cached in
-  memory).
-- **Recall on never-discussed topics** (we'd just get noise from all
-  substrates).
-
-The macro benchmark (`bench/macro/`) is where actual agent task lift
-gets measured. This bench is the "given perfect knowledge of what the
-agent wants, which substrate gives it the cheapest answer?" question.
+- **Multi-turn memory recall**. See `bench/multiturn/`.
+- **Agent task lift**. See `bench/macro/`.
+- **Different memory systems' retrieval policies** (mem0 / Letta /
+  Claude memory tool). Adding those would require each system's
+  retrieval layer as a substrate. Out of scope for the first pass.

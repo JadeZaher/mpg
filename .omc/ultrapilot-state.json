@@ -1,21 +1,20 @@
 {
   "active": true,
-  "mode": "ultrapilot-with-pivot",
-  "task": "macro bench tier — agent task lift on a code+specs corpus",
+  "mode": "swarm-fanout",
+  "task": "tackle 'What's missing' items in BENCHMARKS.md + run live macro bench",
   "branch": "bench",
-  "starting_commit": "24150b9",
-  "phase": "redirected_corpus",
-  "pivot_note": "user redirected: corpus is fractalengine (specs + code), not Claude JSONL. Tasks: browse specs and code, find specific chunks of content. mdg's value: smaller node windows + pagination + stashing => finer-grained context than read+grep on whole files.",
-  "corpus": {
-    "root": "C:/Users/atooz/Programming/fractalengine-workspace/fractalengine",
-    "specs": "conductor/tracks/<track>/{spec.md,plan.md,metadata.json}",
-    "code": "fe-*/src/**/*.rs",
-    "docs": "docs/**/*.md, AGENTS.md, BUILDING.md"
-  },
-  "workers": [
-    {"id": "w1", "status": "running", "files": ["bench/macro/agent/**"], "task": "agent harness — corpus-agnostic, still valid"},
-    {"id": "w2", "status": "coordinator-handles", "files": ["bench/macro/tasks/**", "bench/macro/run.ts"], "task": "fractalengine task specs + driver"},
-    {"id": "w3", "status": "coordinator-handles", "files": ["bench/aggregate.ts (macro section)", "bench/macro/README.md"], "task": "aggregator + README"}
+  "starting_commit": "64c0318",
+  "phase": "parallel_execution",
+  "background_jobs": [
+    {"id": "bj1y8k1vg", "kind": "bash", "task": "live macro bench run with API key", "status": "running"},
+    {"id": "aeee70e9e34606a6f", "kind": "swarm_worker_A", "task": "bench/multiturn — multi-session memory recall", "status": "running", "files": ["bench/multiturn/**"]},
+    {"id": "a5572977c8eb853e1", "kind": "swarm_worker_B", "task": "bench/semantic — paraphrased queries; embedding lift vs regex on no-literal queries", "status": "running", "files": ["bench/semantic/**"]},
+    {"id": "a7e6cdd8ef2a60dcb", "kind": "swarm_worker_C", "task": "bench/conversational/{chunking,embed-chunked,run-chunked}.ts — per-event JSONL chunking for embeddings", "status": "running", "files": ["bench/conversational/chunking.ts", "bench/conversational/embed-chunked.ts", "bench/conversational/run-chunked.ts"]}
   ],
-  "shared_files": ["package.json"]
+  "coordinator_followup": [
+    "aggregate.ts — add multiturn / semantic / conversational-chunked sections; remove macro/multiturn/semantic from 'What's missing'",
+    "package.json — add bench:multiturn / bench:semantic / bench:conv-chunked scripts to the bench chain",
+    "BENCHMARKS.md — regenerate"
+  ],
+  "shared_files": ["package.json", "bench/aggregate.ts"]
 }
