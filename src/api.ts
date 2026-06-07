@@ -151,11 +151,14 @@ export interface StashResult {
 // ─── Search ─────────────────────────────────────────────────────────
 
 const EFFORT_DEFAULTS: Record<Effort, { before: number; after: number; maxNodes: number }> = {
-  // "scan" — file:line hit list. No padding, generous max-nodes.
-  // Use when the agent wants to enumerate matches and decide what to
-  // dig into next. Mirrors rg's cost (~50 tok/match) while keeping
-  // mdg's status field, pagination, and stash interop.
-  scan:   { before: 0,    after: 0,    maxNodes: 200 },
+  // "scan" — index mode. Many nodes with tiny disambiguating windows
+  // (~20 tokens on each side of the match). Purpose: see all hits at
+  // once, then pick which file/page to dig into with quick/normal/deep.
+  // This is the "index -> detail" pattern: scan first to find what's
+  // relevant; targeted small queries follow up on the chosen file(s).
+  // Tokens scale O(n) with hit count (~60 tok/match on average);
+  // recall matches ripgrep when results fit under max_nodes.
+  scan:   { before: 20,   after: 20,   maxNodes: 200 },
   quick:  { before: 200,  after: 200,  maxNodes: 10  },
   normal: { before: 500,  after: 500,  maxNodes: 30  },
   deep:   { before: 2000, after: 2000, maxNodes: 100 },

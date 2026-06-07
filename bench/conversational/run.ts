@@ -82,9 +82,11 @@ function runMdgSub(corpusRoot: string, pattern: string): SubResult {
   const t0 = Date.now();
   const r = spawnSync(
     "node",
-    // No --effort flag: exercises mdg's DEFAULT (now "quick" — small
-    // windows, small node cap) which is what an agent calls first.
-    [join(repoRoot(), "dist", "index.js"), pattern, "--in", corpusRoot, "--format", "json", "--no-color"],
+    // Use --effort scan: index mode (200 nodes / 20 token windows).
+    // This is the "first turn" mode an agent should call for a hit
+    // list across the search space. Recall should match rg when hits
+    // fit under max_nodes; cost scales O(hits).
+    [join(repoRoot(), "dist", "index.js"), pattern, "--in", corpusRoot, "--effort", "scan", "--format", "json", "--no-color"],
     { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 },
   );
   const ms = Date.now() - t0;

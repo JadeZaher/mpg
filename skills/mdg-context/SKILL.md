@@ -54,7 +54,7 @@ automatically once the `mdg` MCP server is configured.
 
 | effort | before | after | max_nodes | use case |
 | :--- | ---: | ---: | ---: | :--- |
-| **scan**  |  0  |   0 |    200 | Enumerate file:line hits. No context padding. Use when you want a list, not an answer. Cheapest mode. |
+| **scan**  |  20  |  20 |    200 | **Index mode.** Many hits with tiny disambiguating windows. Recall ~= rg; tokens scale O(hits). Use first to find what's relevant, then pick which file/page to dig into. |
 | **quick** | 200 | 200 |     10 | **DEFAULT.** Small windows, small cap. First touch of a topic. |
 | normal | 500 | 500 |     30 | Bump to this when quick was ambiguous. |
 | deep   | 2000 | 2000 |   100 | Final answer grounding — for one targeted query you commit to. |

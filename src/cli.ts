@@ -89,7 +89,7 @@ export interface RawArgs {
 }
 
 export const EFFORT_PRESETS: Record<Effort, { before: number; after: number; maxNodes: number }> = {
-  scan:   { before: 0,    after: 0,    maxNodes: 200 },
+  scan:   { before: 20,   after: 20,   maxNodes: 200 },
   quick:  { before: 200,  after: 200,  maxNodes: 10  },
   normal: { before: 500,  after: 500,  maxNodes: 30  },
   deep:   { before: 2000, after: 2000, maxNodes: 100 },
@@ -124,7 +124,9 @@ NODE SIZING
       --max-tokens <n>      Total token budget across all nodes
       --strategy <mode>     How to use --max-tokens: fill|deep    [default: fill]
   -e, --effort <level>      Preset: scan|quick|normal|deep|auto   [default: quick]
-                            scan=0t/200n (just file:line hits, no padding)
+                            scan=20t/200n (index mode: many hits with tiny
+                              disambiguating windows; pick a file/page,
+                              then bump to quick/normal/deep on that file)
                             quick=200t/10n, normal=500t/30n, deep=2000t/100n
                             Default is quick: small windows, small node cap.
                             "Scan first, dig deeper" is the recommended pattern
