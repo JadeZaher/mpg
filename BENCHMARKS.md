@@ -6,48 +6,43 @@ Automated summary of the most recent `bench/results/*.json` files. Regenerate wi
 npm run bench && npm run bench:agg
 ```
 
-_Generated 2026-06-08T01:10:50.069Z._
+_Generated 2026-06-08T01:19:14.851Z._
 
 ## compaction — memory-system primitive head-to-head
 
-_Tasks: 3. Mega-corpus: 254 files across 4 projects. Run: 2026-06-08T00:42:41.712Z_
+_Tasks: 3. Mega-corpus: 254 files across 4 projects. Run: 2026-06-08T01:18:52.850Z_
 
 The honest test of mdg as a memory primitive: given a topic + token budget, can it assemble a compaction a downstream LLM can answer Q&A from? Arms compared:
 
 - **truncation** — no-LLM baseline. Most-recent files until budget.
-- **mdg-scan** — no-LLM mdg call: `scan + sort recent + window-curve log + max-tokens budget`.
+- **mdg-scan** — no-LLM mdg call: `scan + sort recent + window-curve log + max-tokens budget`. The headline finding.
 - **summarization** — LLM baseline: rg-retrieve + single-pass LLM compaction.
-- **mdg-agent** — LLM with mdg tools, headline arm.
 
 ### Per-arm summary
 
 | arm | pass rate | mean comp tokens | mean in tokens | mean density (pass/k) | mean ms |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| truncation | 11% | 2003 | 0 | 0.06 | 22 |
-| mdg-scan | 33% | 2752 | 0 | 0.06 | 1134 |
-| summarization | 22% | 703 | 18147 | 0.26 | 24792 |
-| mdg-agent | 11% | 15 | 58662 | 7.41 | 28622 |
+| truncation | 22% | 2003 | 0 | 0.11 | 12 |
+| mdg-scan | 56% | 2752 | 0 | 0.45 | 1380 |
+| summarization | 44% | 621 | 20482 | 0.78 | 13060 |
 
 ### Per-task breakdown
 
 | task | arm | pass | comp tok | in tok |
 | :--- | :--- | ---: | ---: | ---: |
-| authentication patterns across projects | truncation | 33% | 2003 | 0 |
+| authentication patterns across projects | truncation | 67% | 2003 | 0 |
 | authentication patterns across projects | mdg-scan | 100% | 5321 | 0 |
-| authentication patterns across projects | summarization | 67% | 849 | 38482 |
-| authentication patterns across projects | mdg-agent | 33% | 15 | 60665 |
+| authentication patterns across projects | summarization | 100% | 1112 | 43419 |
 | asset pipeline / content addressing | truncation | 0% | 2003 | 0 |
-| asset pipeline / content addressing | mdg-scan | 0% | 2609 | 0 |
-| asset pipeline / content addressing | summarization | 0% | 1191 | 14261 |
-| asset pipeline / content addressing | mdg-agent | 0% | 15 | 59262 |
+| asset pipeline / content addressing | mdg-scan | 33% | 2609 | 0 |
+| asset pipeline / content addressing | summarization | 0% | 521 | 16185 |
 | rendering stack and camera setup | truncation | 0% | 2003 | 0 |
-| rendering stack and camera setup | mdg-scan | 0% | 325 | 0 |
-| rendering stack and camera setup | summarization | 0% | 68 | 1698 |
-| rendering stack and camera setup | mdg-agent | 0% | 15 | 56059 |
+| rendering stack and camera setup | mdg-scan | 33% | 325 | 0 |
+| rendering stack and camera setup | summarization | 33% | 231 | 1841 |
 
 ## macro — agent task lift (code + specs corpus)
 
-_Model: `claude-haiku-4-5-20251001 (Anthropic default)`. Corpus: `C:/Users/atooz/Programming/fractalengine-workspace/fractalengine`. Tasks: 5. Run: 2026-06-08T01:09:20.100Z_
+_Model: `claude-haiku-4-5-20251001 (Anthropic default)`. Corpus: `C:/Users/atooz/Programming/fractalengine-workspace/fractalengine`. Tasks: 5. Run: 2026-06-08T01:12:47.551Z_
 
 Two arms of the same agent: **control** (read/grep/write/bash) vs **treatment** (control + 5 mdg tools). Same model, same task set, same budget caps (20 turns, 50k input tokens per task).
 
@@ -55,32 +50,32 @@ Two arms of the same agent: **control** (read/grep/write/bash) vs **treatment** 
 
 | arm | pass rate | mean in tokens | mean out tokens | mean tool calls | mean turns | mean ms |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
-| control   | 100% | 25153 | 651 | 5.8 | 6.4 | 35118 |
-| treatment | 100% | 25404 | 587 | 4.4 | 5.4 | 54640 |
+| control   | 80% | 32774 | 929 | 9.4 | 10.2 | 58236 |
+| treatment | 80% | 34505 | 693 | 5.8 | 6.6 | 59927 |
 
 ### Lift (treatment − control)
 
 | metric | delta | interpretation |
 | :--- | ---: | :--- |
 | pass-rate    | +0% | treatment did not regress accuracy |
-| input tokens | +1% | near-parity |
-| output tokens | -10% | reasoning-verbosity proxy |
-| wall-clock | +56% | latency overhead is mostly mdg CLI spawn |
+| input tokens | +5% | near-parity |
+| output tokens | -25% | reasoning-verbosity proxy |
+| wall-clock | +3% | latency overhead is mostly mdg CLI spawn |
 
 ### Per-task breakdown
 
 | task | arm | pass | in tok | out tok | tools | turns |
 | :--- | :--- | :---: | ---: | ---: | ---: | ---: |
-| entity hierarchy from bloom_stage spec | control | yes | 28676 | 833 | 8 | 9 |
-| entity hierarchy from bloom_stage spec | treatment | yes | 22373 | 537 | 4 | 5 |
-| asset addressing scheme | control | yes | 11079 | 462 | 4 | 4 |
-| asset addressing scheme | treatment | yes | 22041 | 596 | 4 | 5 |
-| function name that loads assets into Bevy | control | yes | 51460 | 891 | 8 | 9 |
-| function name that loads assets into Bevy | treatment | yes | 15584 | 336 | 3 | 4 |
-| previous camera type before bloom_stage | control | yes | 14097 | 525 | 4 | 4 |
-| previous camera type before bloom_stage | treatment | yes | 22986 | 421 | 3 | 4 |
-| code-review tracks from 2026-04-30 | control | yes | 20452 | 542 | 5 | 6 |
-| code-review tracks from 2026-04-30 | treatment | yes | 44038 | 1047 | 8 | 9 |
+| entity hierarchy from bloom_stage spec | control | yes | 30764 | 1092 | 12 | 13 |
+| entity hierarchy from bloom_stage spec | treatment | yes | 55142 | 771 | 8 | 9 |
+| asset addressing scheme | control | yes | 35377 | 793 | 7 | 8 |
+| asset addressing scheme | treatment | no | 54921 | 1215 | 10 | 10 |
+| function name that loads assets into Bevy | control | yes | 15032 | 569 | 5 | 6 |
+| function name that loads assets into Bevy | treatment | yes | 15339 | 325 | 3 | 4 |
+| previous camera type before bloom_stage | control | no | 52399 | 1146 | 13 | 13 |
+| previous camera type before bloom_stage | treatment | yes | 26591 | 521 | 4 | 5 |
+| code-review tracks from 2026-04-30 | control | yes | 30296 | 1044 | 10 | 11 |
+| code-review tracks from 2026-04-30 | treatment | yes | 20533 | 631 | 4 | 5 |
 
 ## multi-turn — does mind palace stashing pay off across turns?
 
@@ -200,9 +195,9 @@ _Run: 2026-06-07T22:46:31.458Z_
 
 ### Agent-in-the-loop (macro, multi-turn, compaction)
 
-- **Macro task lift (claude-haiku-4-5-20251001 (Anthropic default), 5 tasks)**: pass-rate 100%/100% (+0% lift). Treatment converges in **5.4 turns vs 6.4** (16% fewer) and emits **10% less** output reasoning. Input tokens: +1% (mdg results inline).
+- **Macro task lift (claude-haiku-4-5-20251001 (Anthropic default), 5 tasks)**: pass-rate 80%/80% (+0% lift). Treatment converges in **6.6 turns vs 10.2** (35% fewer) and emits **25% less** output reasoning. Input tokens: +5% (mdg results inline).
 - **Multi-turn (claude-haiku-4-5-20251001, 3 scenarios)**: **+33% pass-rate lift** (0% → 33%), **9% fewer** input tokens. Across multiple related questions, the mind palace makes evidence reusable so later turns don't re-search.
-- **Compaction (3 topics × 4 arms, ~2000-token budget)**: **mdg-scan (zero-LLM)** beats single-pass LLM summarization on pass-rate (33% vs 22%) and beats truncation (11%) at **zero LLM input tokens**. For "compact a topic to N tokens, then Q&A from it," `mdg --effort scan --clip 30 --sort recent --max-tokens N` is more reliable than spending ~18147 tokens on summarization. The LLM-driven mdg-agent arm under-performs (11% pass) because the agent emits a status message instead of writing the file — a model-behavior failure mode, not a tooling one.
+- **Compaction (3 topics × 3 arms, ~2000-token budget)**: **mdg-scan (zero-LLM)** beats single-pass LLM summarization on pass-rate (56% vs 44%) and beats truncation (22%) at **zero LLM input tokens**. For "compact a topic to N tokens, then Q&A from it," `mdg --effort scan --clip 30 --sort recent --max-tokens N` is more reliable than spending ~20482 tokens on summarization.
 
 ## Where mdg wins and loses
 
@@ -211,14 +206,13 @@ Auto-generated from the latest run.
 **Wins:**
 - Beats rg on tokens by **3.2×** (377 vs 1197) at the same 100% recall + precision via `--effort scan --clip 30`.
 - **100% typo recall** at edit distance ≤ 2 via `--fuzzy` (rg: 0%). Catches drop/insert/substitute/swap typos at a fraction of embedding cost.
-- Macro: 100%/100% pass; treatment uses 1.19× fewer turns. The lens isn't "always cheaper" — it's "fewer round-trips and less verbose reasoning."
+- Macro: 80%/80% pass; treatment uses 1.55× fewer turns. The lens isn't "always cheaper" — it's "fewer round-trips and less verbose reasoning."
 - **+33% multi-turn pass-rate lift** with mind palace stashing across turns (0% → 33%), at 9% fewer input tokens.
-- **Zero-LLM compaction beats LLM summarization** at the same budget (33% vs 22% pass), at zero LLM input tokens. Use `mdg --effort scan --clip 30 --sort recent --max-tokens N` instead of an LLM round-trip when the goal is "compact for downstream Q&A."
+- **Zero-LLM compaction beats LLM summarization** at the same budget (56% vs 44% pass), at zero LLM input tokens. Use `mdg --effort scan --clip 30 --sort recent --max-tokens N` instead of an LLM round-trip when the goal is "compact for downstream Q&A."
 - Mind palace set semantics hold (micro: compose=union, intersect=intersection, prune-keep by recency, graph terminates on cycles). rg has no equivalent of any of these — and mdg's actual pitch is **stash, recall, compose across turns**, which rg structurally cannot do.
 
 **Loses:**
 - Cold-start latency vs rg (1138ms vs 21ms, ~55× slower). Node startup + JSON formatter overhead matters in tight agent loops; MCP server warm-call is closer to rg.
-- LLM-driven mdg-agent compaction: 11% pass — the model emits a short "done" status instead of writing the actual compaction to the file the bench reads. Headline mdg-as-compaction is the zero-LLM scan arm, not the agentic one.
 
 ## What's missing (the comparisons this bench can't make yet)
 
