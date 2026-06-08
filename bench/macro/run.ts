@@ -164,9 +164,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  const modelId = process.env.MDG_BENCH_MODEL ?? "claude-haiku-4-5-20251001";
+  const explicitModel = process.env.MDG_BENCH_MODEL;
+  const provider = (process.env.MDG_BENCH_PROVIDER ?? "anthropic").toLowerCase();
+  const displayModel =
+    explicitModel ?? (provider === "openrouter" ? "deepseek/deepseek-v4-pro (OpenRouter default)" : "claude-haiku-4-5-20251001 (Anthropic default)");
   process.stdout.write(`\nMacro bench — ${TASKS.length} tasks × 2 arms = ${TASKS.length * 2} runs\n`);
-  process.stdout.write(`Model: ${modelId}\n`);
+  process.stdout.write(`Provider: ${provider}\nModel: ${displayModel}\n`);
   process.stdout.write(`Corpus: ${FRACTAL_ROOT}\n`);
   process.stdout.write(`Budget per run: 20 turns, 50k input tokens\n\n`);
 

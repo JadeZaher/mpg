@@ -52,20 +52,23 @@ export async function runMdgAgent(task: CompactionTask, corpusRoot: string): Pro
     const taskPrompt =
       `Produce a memory compaction about the following topic.\n\n` +
       `TOPIC: ${task.topic}\n\n` +
-      `BUDGET: ${task.budget_tokens} tokens (hard cap on the compaction text).\n` +
-      `CORPUS: search the contents of \`${corpusRoot}\` using your tools. ` +
-      `The corpus spans multiple projects' conductor tracks (markdown specs + plans + JSON metadata).\n\n` +
-      `OUTPUT FORMAT (critical):\n` +
-      `When you have gathered what you need, write your FINAL response as a single tagged block:\n\n` +
+      `BUDGET: ${task.budget_tokens} tokens (hard cap on the compaction text between the tags).\n` +
+      `CORPUS: \`${corpusRoot}\` — multiple projects' conductor tracks (markdown specs + plans + JSON metadata).\n\n` +
+      `THE FASTEST PATH (try this first):\n` +
+      `A single mdg_search call with effort:"scan", clip_chars:30, max_tokens:${task.budget_tokens}, sort:"recent" ` +
+      `against \`${corpusRoot}\` for the topic's key terms IS a compaction. mdg's lens hard-caps the budget for you — ` +
+      `you can just wrap the output in <compaction>...</compaction> and stop.\n\n` +
+      `If you want a tighter result, run scan first to find the relevant files, stash the result, ` +
+      `then use 'from' to scope a second mdg_search with richer windows (effort:"normal") only ` +
+      `on those files.\n\n` +
+      `OUTPUT FORMAT (CRITICAL — read carefully):\n` +
+      `When you have what you need, your FINAL response MUST be:\n\n` +
       `${COMPACTION_OPEN}\n` +
-      `(the compaction text here — about ${task.budget_tokens} tokens; preserve concrete facts like file paths, identifiers, version numbers, function names; no preamble outside the tags)\n` +
+      `(the actual compaction text — file paths, identifiers, version numbers, schemes, function names, ` +
+      `~${task.budget_tokens} tokens, no preamble outside the tags)\n` +
       `${COMPACTION_CLOSE}\n\n` +
-      `Do NOT write things like "I have produced the compaction" instead of the compaction. ` +
-      `The text between ${COMPACTION_OPEN} and ${COMPACTION_CLOSE} is what gets scored — it must contain the actual content.\n\n` +
-      `GUIDANCE for using mdg efficiently:\n` +
-      `1. Start with mdg_search at effort: 'scan' (with clip_chars: 30 if available) to get a time-ordered index of every hit on the topic.\n` +
-      `2. Stash the index, then drill into specific files with mdg_search at effort: 'quick' or 'normal' for richer context only where you actually need it.\n` +
-      `3. Multiple targeted parallel searches beat one huge deep search.`;
+      `Do NOT write "I have produced the compaction" or "Here is the compaction:" — write the COMPACTION ITSELF ` +
+      `between the tags. The text inside the tags is what gets scored; an empty or status-only response fails.`;
 
     const result = await runAgent({
       taskPrompt,

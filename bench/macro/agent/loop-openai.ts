@@ -56,9 +56,13 @@ function sleep(ms: number): Promise<void> {
 
 function isRetryable(err: unknown): boolean {
   const msg = (err as Error)?.message ?? "";
+  const name = (err as Error)?.name ?? "";
   const status = (err as { status?: number })?.status;
-  if (status === 429 || status === 529 || status === 503) return true;
-  if (/rate.?limit|overload|ECONNRESET|ETIMEDOUT|temporar/i.test(msg)) return true;
+  if (status === 429 || status === 529 || status === 503 || status === 504) return true;
+  // OpenAI SDK surfaces request timeouts as APIConnectionTimeoutError /
+  // AbortError. DeepSeek occasionally hangs for >3 min then 504s.
+  if (/timeout|AbortError|APIConnectionTimeout/i.test(name)) return true;
+  if (/rate.?limit|overload|ECONNRESET|ETIMEDOUT|EAI_AGAIN|temporar|timeout/i.test(msg)) return true;
   return false;
 }
 

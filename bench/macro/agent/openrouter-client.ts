@@ -72,6 +72,12 @@ export async function getOpenRouterClient(): Promise<OpenAIClient> {
   _client = new OpenAI({
     apiKey,
     baseURL: "https://openrouter.ai/api/v1",
+    // 3-minute per-request hard timeout. DeepSeek calls occasionally
+    // hang for 5+ min with no error signal — without this, one stuck
+    // call freezes the whole bench. The loop's retry-with-backoff
+    // catches the timeout and tries again.
+    timeout: 3 * 60 * 1000,
+    maxRetries: 0, // our outer loop handles retries; don't double-retry
     defaultHeaders: {
       // Optional but polite: lets OpenRouter attribute requests.
       "HTTP-Referer": "https://github.com/JadeZaher/mdg",
