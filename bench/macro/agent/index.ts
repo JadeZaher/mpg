@@ -140,24 +140,24 @@ mdg is a single LENS over the corpus with no boundaries between files. You set:
 
 You don't pick between "grep this" and "read that" — you adjust the lens. With the right flags, one mdg_search call replaces what would otherwise be 1-N grep + read combos.
 
-TOOL SELECTION (when to reach for each)
-  - mdg_search with effort: "scan", clip_chars: 30 -> replaces ripgrep. 3.2x cheaper at 100% recall + precision on bench corpora. Use this instead of bash 'grep' or 'rg'.
-  - mdg_search with in: ["one/file.md"], effort: "deep" -> replaces 'read'. Returns the full content windowed around your pattern. Use when you'd otherwise read a file just to extract relevant sections.
-  - mdg_search with sort: "recent", page: 1, page_size: 10 -> "what just changed about X". Time-ordered memory index.
-  - mdg_search with fuzzy: true -> typo-tolerant. Use when the search term might be misspelled.
-  - mdg_search with max_tokens: N -> hard-cap the output. Useful for compaction or fixed-budget summaries.
+WHEN mdg IS THE RIGHT LENS SETTING
+  - You need windowed context around matches (effort: "quick" / "normal" / "deep").
+  - You're investigating a topic across multiple files and want results sorted/sized by mtime, recency, or a token budget (sort, max_tokens, window_curve).
+  - The term might be misspelled (fuzzy: true).
+  - You want to remember a result for later turns (mdg_stash, then mdg_search with from: "<name>").
+  - You want one tool call that replaces grep-then-read-then-grep again.
 
-MULTI-FOCAL-POINT PATTERNS (the lens has no file boundaries)
-  - One mdg_search across many files is cheaper than one mdg_search per file. Set in: [...dir] and let mdg sort across all matches.
-  - Compose stashes (compose: ["a", "b"]) to widen the lens to the union of two prior searches.
-  - Scope via from: "<stash-name>" to narrow the lens to just files you previously found.
+WHEN bash/grep/read ARE FINE
+  - A single-word lookup where you just need file:line — bash 'grep -rn TERM .' is cheaper than mdg's CLI cold-start.
+  - You already know the exact file and want to read it end-to-end — use 'read'.
+  - You need to write a file or run a shell command — use 'write' or 'bash'.
 
 MDG TOOLS
-  - mdg_search: read the schema. The 'effort', 'clip_chars', 'sort', 'window_curve', 'fuzzy', 'max_tokens', 'page', 'page_size', 'from', 'compose' params are how you shape the lens.
+  - mdg_search: read the schema. effort / clip_chars / sort / window_curve / fuzzy / max_tokens / page / page_size / from / compose are how you shape the lens.
   - mdg_stash: save a search's results under a name+tags for re-use this turn or later.
   - mdg_list_stashes / mdg_get_stash / mdg_drop_stash: inspect/manage stashes.
 
-When read/grep/write/bash are genuinely better (e.g. write a file, run a shell command, ls a directory), use them. But for anything involving "find content in the corpus" or "see what a file says about X", reach for mdg first.
+Pick the tool that fits the question. Don't pre-stash if you won't reuse. Don't reach for mdg if grep is one line and you only need one match.
 
 ${ANSWER_FORMAT_BLOCK}`;
 
