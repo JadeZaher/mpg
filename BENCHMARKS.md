@@ -6,11 +6,11 @@ Automated summary of the most recent `bench/results/*.json` files. Regenerate wi
 npm run bench && npm run bench:agg
 ```
 
-_Generated 2026-06-07T23:40:43.146Z._
+_Generated 2026-06-08T00:51:39.018Z._
 
 ## compaction — memory-system primitive head-to-head
 
-_Tasks: 3. Mega-corpus: 254 files across 4 projects. Run: 2026-06-07T22:52:00.683Z_
+_Tasks: 3. Mega-corpus: 254 files across 4 projects. Run: 2026-06-08T00:42:41.712Z_
 
 The honest test of mdg as a memory primitive: given a topic + token budget, can it assemble a compaction a downstream LLM can answer Q&A from? Arms compared:
 
@@ -23,27 +23,27 @@ The honest test of mdg as a memory primitive: given a topic + token budget, can 
 
 | arm | pass rate | mean comp tokens | mean in tokens | mean density (pass/k) | mean ms |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| truncation | 22% | 2003 | 0 | 0.11 | 6 |
-| mdg-scan | 67% | 2752 | 0 | 0.49 | 993 |
-| summarization | 33% | 573 | 20482 | 0.47 | 12689 |
-| mdg-agent | 11% | 15 | 68726 | 7.41 | 52168 |
+| truncation | 11% | 2003 | 0 | 0.06 | 22 |
+| mdg-scan | 33% | 2752 | 0 | 0.06 | 1134 |
+| summarization | 22% | 703 | 18147 | 0.26 | 24792 |
+| mdg-agent | 11% | 15 | 58662 | 7.41 | 28622 |
 
 ### Per-task breakdown
 
 | task | arm | pass | comp tok | in tok |
 | :--- | :--- | ---: | ---: | ---: |
-| authentication patterns across projects | truncation | 67% | 2003 | 0 |
+| authentication patterns across projects | truncation | 33% | 2003 | 0 |
 | authentication patterns across projects | mdg-scan | 100% | 5321 | 0 |
-| authentication patterns across projects | summarization | 100% | 711 | 43419 |
-| authentication patterns across projects | mdg-agent | 33% | 15 | 58401 |
+| authentication patterns across projects | summarization | 67% | 849 | 38482 |
+| authentication patterns across projects | mdg-agent | 33% | 15 | 60665 |
 | asset pipeline / content addressing | truncation | 0% | 2003 | 0 |
-| asset pipeline / content addressing | mdg-scan | 67% | 2609 | 0 |
-| asset pipeline / content addressing | summarization | 0% | 810 | 16185 |
-| asset pipeline / content addressing | mdg-agent | 0% | 15 | 90702 |
+| asset pipeline / content addressing | mdg-scan | 0% | 2609 | 0 |
+| asset pipeline / content addressing | summarization | 0% | 1191 | 14261 |
+| asset pipeline / content addressing | mdg-agent | 0% | 15 | 59262 |
 | rendering stack and camera setup | truncation | 0% | 2003 | 0 |
-| rendering stack and camera setup | mdg-scan | 33% | 325 | 0 |
-| rendering stack and camera setup | summarization | 0% | 198 | 1841 |
-| rendering stack and camera setup | mdg-agent | 0% | 15 | 57076 |
+| rendering stack and camera setup | mdg-scan | 0% | 325 | 0 |
+| rendering stack and camera setup | summarization | 0% | 68 | 1698 |
+| rendering stack and camera setup | mdg-agent | 0% | 15 | 56059 |
 
 ## macro — agent task lift (code + specs corpus)
 
@@ -84,7 +84,7 @@ Two arms of the same agent: **control** (read/grep/write/bash) vs **treatment** 
 
 ## multi-turn — does mind palace stashing pay off across turns?
 
-_Model: `claude-haiku-4-5-20251001`. Corpus: `C:/Users/atooz/Programming/fractalengine-workspace/fractalengine`. Scenarios: 3. Run: 2026-06-07T23:39:32.356Z_
+_Model: `claude-haiku-4-5-20251001`. Corpus: `C:/Users/atooz/Programming/fractalengine-workspace/fractalengine`. Scenarios: 3. Run: 2026-06-08T00:03:28.214Z_
 
 Multi-step scenarios where earlier turns set up evidence later turns need. Treatment is encouraged to stash early findings so later turns are cheap recalls instead of fresh searches.
 
@@ -92,15 +92,15 @@ Multi-step scenarios where earlier turns set up evidence later turns need. Treat
 
 | arm | pass rate | mean in tokens | mean out tokens | mean tool calls | mean turns | mean ms |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
-| control   | 67% | 63999 | 1402 | 11.7 | 12.3 | 95017 |
-| treatment | 0% | 48630 | 731 | 6.3 | 6.3 | 830476 |
+| control   | 0% | 65085 | 1206 | 10.3 | 10.3 | 139444 |
+| treatment | 33% | 59432 | 1145 | 9.3 | 9.7 | 187500 |
 
 ### Lift
 
-- **pass-rate**: -67%
-- **input tokens**: -24% (**meaningful savings**)
-- **output tokens**: -48%
-- **wall-clock**: +774%
+- **pass-rate**: +33%
+- **input tokens**: -9% 
+- **output tokens**: -5%
+- **wall-clock**: +34%
 
 ## memory-corpus literal recall (oasis-sleek conductor tracks)
 
