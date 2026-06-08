@@ -222,7 +222,8 @@ async function main(): Promise<void> {
 
   const path = writeResult("macro", {
     status: "ok",
-    model: modelId,
+    model: displayModel,
+    provider,
     corpus_root: FRACTAL_ROOT,
     tasks: TASKS.length,
     cells,
