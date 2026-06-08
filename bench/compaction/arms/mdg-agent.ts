@@ -12,6 +12,9 @@
  * the same token budget.
  */
 
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { runAgent } from "../../macro/agent/index.js";
 import type { CompactionTask } from "../tasks.js";
 
@@ -49,26 +52,34 @@ export function extractCompaction(text: string): string {
 export async function runMdgAgent(task: CompactionTask, corpusRoot: string): Promise<ArmResult> {
   const t0 = Date.now();
   try {
+    // Force the agent through the file-system to defeat the "I'm done"
+    // failure mode. Models trained to be terse interpret "your final
+    // message IS the compaction" as "say done" no matter how the prompt
+    // tries to override it. The write tool, by contrast, is a concrete
+    // action: file content cannot be summarized away. After the agent
+    // signals completion we read the file as the compaction.
+    const outDir = mkdtempSync(join(tmpdir(), `mdg-compaction-${task.id}-`));
+    const compactionPath = join(outDir, "compaction.md").replace(/\\/g, "/");
+
     const taskPrompt =
-      `Produce a memory compaction about the following topic.\n\n` +
+      `Produce a memory compaction about the following topic and save it to a file using the \`write\` tool.\n\n` +
       `TOPIC: ${task.topic}\n\n` +
-      `BUDGET: ${task.budget_tokens} tokens (hard cap on the compaction text between the tags).\n` +
-      `CORPUS: \`${corpusRoot}\` — multiple projects' conductor tracks (markdown specs + plans + JSON metadata).\n\n` +
-      `THE FASTEST PATH (try this first):\n` +
-      `A single mdg_search call with effort:"scan", clip_chars:30, max_tokens:${task.budget_tokens}, sort:"recent" ` +
-      `against \`${corpusRoot}\` for the topic's key terms IS a compaction. mdg's lens hard-caps the budget for you — ` +
-      `you can just wrap the output in <compaction>...</compaction> and stop.\n\n` +
-      `If you want a tighter result, run scan first to find the relevant files, stash the result, ` +
-      `then use 'from' to scope a second mdg_search with richer windows (effort:"normal") only ` +
-      `on those files.\n\n` +
-      `OUTPUT FORMAT (CRITICAL — read carefully):\n` +
-      `When you have what you need, your FINAL response MUST be:\n\n` +
-      `${COMPACTION_OPEN}\n` +
-      `(the actual compaction text — file paths, identifiers, version numbers, schemes, function names, ` +
-      `~${task.budget_tokens} tokens, no preamble outside the tags)\n` +
-      `${COMPACTION_CLOSE}\n\n` +
-      `Do NOT write "I have produced the compaction" or "Here is the compaction:" — write the COMPACTION ITSELF ` +
-      `between the tags. The text inside the tags is what gets scored; an empty or status-only response fails.`;
+      `BUDGET: ${task.budget_tokens} tokens (approximate, hard cap on the file content).\n` +
+      `CORPUS: \`${corpusRoot}\` — multiple projects' conductor tracks (markdown specs + plans + JSON metadata).\n` +
+      `OUTPUT FILE: \`${compactionPath}\` (must exist when you finish — the bench reads this file)\n\n` +
+      `THE FASTEST PATH:\n` +
+      `1. Call mdg_search with effort:"scan", clip_chars:30, max_tokens:${task.budget_tokens}, sort:"recent" ` +
+      `against \`${corpusRoot}\` for the topic's key terms (OR'd in the regex).\n` +
+      `2. Take the formatted output as your compaction. mdg's lens hard-caps the budget for you.\n` +
+      `3. Call the \`write\` tool with path:"${compactionPath}" and content:(the mdg output).\n` +
+      `4. Reply with a brief "done" — the bench reads the file, not your message.\n\n` +
+      `ALTERNATIVE (if you want a tighter, synthesized compaction):\n` +
+      `- Run scan first to find the files, stash them with stash_name, ` +
+      `then use mdg_search with from:"<stash>" + effort:"normal" to get richer windows.\n` +
+      `- Compose the relevant parts yourself, then write the result to ${compactionPath}.\n\n` +
+      `CRITICAL: the file ${compactionPath} MUST exist and be non-empty when you finish. ` +
+      `If you don't write the file, the bench scores 0% — no exceptions. ` +
+      `Preserve concrete facts: file paths, identifiers, version numbers, hashing schemes, function names.`;
 
     const result = await runAgent({
       taskPrompt,
@@ -79,8 +90,19 @@ export async function runMdgAgent(task: CompactionTask, corpusRoot: string): Pro
       interTurnDelayMs: 500,
       maxRetries: 5,
     });
-    // Extract from the tagged block; falls back to full text if untagged.
-    const compaction = extractCompaction(result.finalText);
+
+    // Prefer the written file. Fall back to extractCompaction(finalText)
+    // if the agent ignored the instruction (so we at least record what
+    // it did emit).
+    let compaction = "";
+    if (existsSync(compactionPath)) {
+      try {
+        compaction = readFileSync(compactionPath, "utf8").trim();
+      } catch { /* fall through */ }
+    }
+    if (!compaction || compaction.length < 50) {
+      compaction = extractCompaction(result.finalText);
+    }
     return {
       arm: "mdg-agent",
       compaction,
