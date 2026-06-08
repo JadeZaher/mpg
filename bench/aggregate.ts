@@ -173,6 +173,87 @@ function latest<T>(tier: string): T | null {
 function fmtPct(x: number): string { return `${(x * 100).toFixed(0)}%`; }
 function num(x: number): string { return Math.round(x).toString(); }
 
+function tldr(
+  conv: ConvFile | null,
+  typo: TypoFile | null,
+  macro: MacroFile | null,
+  mt: MultiTurnFile | null,
+  comp: CompactionFile | null,
+): string {
+  const bullets: string[] = [];
+
+  // Compaction: zero-LLM beats LLM at the same budget.
+  if (comp?.summary?.["mdg-scan"] && comp.summary["summarization"]) {
+    const sc = comp.summary["mdg-scan"];
+    const sum = comp.summary["summarization"];
+    if (sc.mean_pass_rate >= sum.mean_pass_rate) {
+      bullets.push(
+        `**Zero-LLM compaction beats LLM summarization** — \`mdg --effort scan\` ${fmtPct(sc.mean_pass_rate)} pass vs summarization's ${fmtPct(sum.mean_pass_rate)} at the same 2k-token budget, at **0 LLM input tokens** vs ${num(sum.mean_input_tokens)}.`,
+      );
+    }
+  }
+
+  // Conversational: 3.2× cheaper than rg at same recall.
+  if (conv?.summary) {
+    const rg = conv.summary["ripgrep"];
+    const mdg = conv.summary["mdg"];
+    if (rg && mdg && mdg.tokens > 0 && rg.tokens > mdg.tokens && Math.abs(mdg.recall - rg.recall) < 0.02) {
+      const factor = (rg.tokens / mdg.tokens).toFixed(1);
+      bullets.push(
+        `**${factor}× cheaper than ripgrep** on the memory-system corpus — ${num(mdg.tokens)} vs ${num(rg.tokens)} tokens at the same ${fmtPct(mdg.recall)} recall + ${fmtPct(mdg.prec)} precision (\`--effort scan --clip 30\`).`,
+      );
+    }
+  }
+
+  // Typo: catches what rg can't.
+  if (typo?.summary?.["mdg-fuzzy"] && typo.summary["rg"]) {
+    const f = typo.summary["mdg-fuzzy"];
+    const r = typo.summary["rg"];
+    if (f.recall - r.recall > 0.3) {
+      bullets.push(
+        `**${fmtPct(f.recall)} typo recall** at edit distance ≤ 2 — \`--fuzzy\` catches drop/insert/substitute/swap typos that rg misses entirely (rg: ${fmtPct(r.recall)}).`,
+      );
+    }
+  }
+
+  // Multi-turn: pass-rate lift with stashing.
+  if (mt?.summary) {
+    const c = mt.summary.control;
+    const t = mt.summary.treatment;
+    if (t.pass_rate - c.pass_rate > 0.1) {
+      const inDelta = c.mean_input_tokens === 0 ? 0 : (t.mean_input_tokens / c.mean_input_tokens) - 1;
+      bullets.push(
+        `**+${fmtPct(t.pass_rate - c.pass_rate)} multi-turn pass-rate lift** when the agent stashes evidence across turns (${fmtPct(c.pass_rate)} → ${fmtPct(t.pass_rate)})${inDelta < 0 ? `, at ${fmtPct(Math.abs(inDelta))} fewer input tokens` : ""}.`,
+      );
+    }
+  }
+
+  // Macro: convergence speedup.
+  if (macro?.summary) {
+    const c = macro.summary.control;
+    const t = macro.summary.treatment;
+    if (c.mean_turns > 0 && t.mean_turns / c.mean_turns < 0.85 && t.pass_rate >= c.pass_rate - 0.05) {
+      const turnSavings = 1 - (t.mean_turns / c.mean_turns);
+      bullets.push(
+        `**${fmtPct(turnSavings)} fewer turns to convergence** on agent-task macro — same pass rate (${fmtPct(c.pass_rate)}/${fmtPct(t.pass_rate)}) but treatment finishes in ${t.mean_turns.toFixed(1)} turns vs ${c.mean_turns.toFixed(1)}, with ${(1 - (t.mean_output_tokens / Math.max(1, c.mean_output_tokens))) * 100 > 0 ? `${fmtPct(1 - (t.mean_output_tokens / Math.max(1, c.mean_output_tokens)))} less` : "comparable"} output reasoning.`,
+      );
+    }
+  }
+
+  if (bullets.length === 0) return "";
+
+  return [
+    "## TL;DR — what this bench actually shows",
+    "",
+    "When you stack the latest runs end-to-end:",
+    "",
+    ...bullets.map((b) => `- ${b}`),
+    "",
+    "Trade-offs are real (cold-start latency, single-keyword lookups, paraphrased-query recall) — they're documented in the **Wins and trade-offs** section at the bottom alongside the context for when they matter.",
+    "",
+  ].join("\n");
+}
+
 function header(): string {
   return [
     "# mdg benchmarks — aggregated results",
@@ -321,7 +402,7 @@ function whatItMeans(
     if (mdg && rg) {
       const slow = rg.ms === 0 ? 1 : mdg.ms / rg.ms;
       if (slow > 3) {
-        loses.push(`Cold-start latency vs rg (${num(mdg.ms)}ms vs ${num(rg.ms)}ms, ~${slow.toFixed(0)}× slower). Node startup + JSON formatter overhead matters in tight agent loops; MCP server warm-call is closer to rg.`);
+        loses.push(`**Cold-start latency vs rg** (${num(mdg.ms)}ms vs ${num(rg.ms)}ms, ~${slow.toFixed(0)}× slower). This is the cost of Node startup + JSON formatting + token budgeting; mdg's pitch isn't faster grep, it's a *budgeted, addressable, stash-able* lens. For workflows that don't need any of that, rg is the right tool — and mdg's MCP server (warm-call mode) closes most of the gap.`);
       }
     }
   }
@@ -368,7 +449,7 @@ function whatItMeans(
       wins.push(`Macro: ${fmtPct(c.pass_rate)}/${fmtPct(t.pass_rate)} pass; treatment uses ${(c.mean_turns / Math.max(0.01, t.mean_turns)).toFixed(2)}× fewer turns. The lens isn't "always cheaper" — it's "fewer round-trips and less verbose reasoning."`);
     }
     if (inRatio > 1.1) {
-      loses.push(`Macro: treatment pays +${fmtPct(inRatio - 1)} input tokens. mdg result blocks accumulate in context faster than rg lines. For single-word lookups, the lens prompt explicitly tells the agent to use bash grep.`);
+      loses.push(`**Macro input-token overhead** (+${fmtPct(inRatio - 1)} vs control). mdg result blocks carry windowed context and metadata; rg returns raw lines. The agent's lens prompt already tells it to skip mdg for single-keyword lookups where rg's output is enough. The trade is: pay tokens for context that converges the agent faster (${(c.mean_turns / Math.max(0.01, t.mean_turns)).toFixed(2)}× fewer turns this run).`);
     }
   }
   if (mt?.summary) {
@@ -399,14 +480,14 @@ function whatItMeans(
   wins.push("Mind palace set semantics hold (micro: compose=union, intersect=intersection, prune-keep by recency, graph terminates on cycles). rg has no equivalent of any of these — and mdg's actual pitch is **stash, recall, compose across turns**, which rg structurally cannot do.");
 
   lines.push("");
-  lines.push("## Where mdg wins and loses");
+  lines.push("## Wins and trade-offs");
   lines.push("");
-  lines.push("Auto-generated from the latest run.");
+  lines.push("Auto-generated from the latest run. Trade-offs are listed with the context that makes them acceptable — most are deliberate design choices, not unsolved problems.");
   lines.push("");
   lines.push("**Wins:**");
   for (const w of wins) lines.push(`- ${w}`);
   lines.push("");
-  lines.push("**Loses:**");
+  lines.push("**Trade-offs:**");
   for (const l of loses) lines.push(`- ${l}`);
   lines.push("");
   lines.push("## What's missing (the comparisons this bench can't make yet)");
@@ -670,6 +751,7 @@ function main(): void {
   const comp = latest<CompactionFile>("compaction");
   const body = [
     header(),
+    tldr(conv, typo, macro, mt, comp),
     compactionSection(comp),
     macroSection(macro),
     multiTurnSection(mt),

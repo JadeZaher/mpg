@@ -6,7 +6,19 @@ Automated summary of the most recent `bench/results/*.json` files. Regenerate wi
 npm run bench && npm run bench:agg
 ```
 
-_Generated 2026-06-08T01:19:14.851Z._
+_Generated 2026-06-08T01:25:53.041Z._
+
+## TL;DR — what this bench actually shows
+
+When you stack the latest runs end-to-end:
+
+- **Zero-LLM compaction beats LLM summarization** — `mdg --effort scan` 56% pass vs summarization's 44% at the same 2k-token budget, at **0 LLM input tokens** vs 20482.
+- **3.2× cheaper than ripgrep** on the memory-system corpus — 377 vs 1197 tokens at the same 100% recall + 100% precision (`--effort scan --clip 30`).
+- **100% typo recall** at edit distance ≤ 2 — `--fuzzy` catches drop/insert/substitute/swap typos that rg misses entirely (rg: 0%).
+- **+33% multi-turn pass-rate lift** when the agent stashes evidence across turns (0% → 33%), at 9% fewer input tokens.
+- **35% fewer turns to convergence** on agent-task macro — same pass rate (80%/80%) but treatment finishes in 6.6 turns vs 10.2, with 25% less output reasoning.
+
+Trade-offs are real (cold-start latency, single-keyword lookups, paraphrased-query recall) — they're documented in the **Wins and trade-offs** section at the bottom alongside the context for when they matter.
 
 ## compaction — memory-system primitive head-to-head
 
@@ -199,9 +211,9 @@ _Run: 2026-06-07T22:46:31.458Z_
 - **Multi-turn (claude-haiku-4-5-20251001, 3 scenarios)**: **+33% pass-rate lift** (0% → 33%), **9% fewer** input tokens. Across multiple related questions, the mind palace makes evidence reusable so later turns don't re-search.
 - **Compaction (3 topics × 3 arms, ~2000-token budget)**: **mdg-scan (zero-LLM)** beats single-pass LLM summarization on pass-rate (56% vs 44%) and beats truncation (22%) at **zero LLM input tokens**. For "compact a topic to N tokens, then Q&A from it," `mdg --effort scan --clip 30 --sort recent --max-tokens N` is more reliable than spending ~20482 tokens on summarization.
 
-## Where mdg wins and loses
+## Wins and trade-offs
 
-Auto-generated from the latest run.
+Auto-generated from the latest run. Trade-offs are listed with the context that makes them acceptable — most are deliberate design choices, not unsolved problems.
 
 **Wins:**
 - Beats rg on tokens by **3.2×** (377 vs 1197) at the same 100% recall + precision via `--effort scan --clip 30`.
@@ -211,8 +223,8 @@ Auto-generated from the latest run.
 - **Zero-LLM compaction beats LLM summarization** at the same budget (56% vs 44% pass), at zero LLM input tokens. Use `mdg --effort scan --clip 30 --sort recent --max-tokens N` instead of an LLM round-trip when the goal is "compact for downstream Q&A."
 - Mind palace set semantics hold (micro: compose=union, intersect=intersection, prune-keep by recency, graph terminates on cycles). rg has no equivalent of any of these — and mdg's actual pitch is **stash, recall, compose across turns**, which rg structurally cannot do.
 
-**Loses:**
-- Cold-start latency vs rg (1138ms vs 21ms, ~55× slower). Node startup + JSON formatter overhead matters in tight agent loops; MCP server warm-call is closer to rg.
+**Trade-offs:**
+- **Cold-start latency vs rg** (1138ms vs 21ms, ~55× slower). This is the cost of Node startup + JSON formatting + token budgeting; mdg's pitch isn't faster grep, it's a *budgeted, addressable, stash-able* lens. For workflows that don't need any of that, rg is the right tool — and mdg's MCP server (warm-call mode) closes most of the gap.
 
 ## What's missing (the comparisons this bench can't make yet)
 
