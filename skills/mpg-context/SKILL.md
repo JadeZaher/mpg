@@ -23,7 +23,7 @@ tools:
   - mpg_get_stash
   - mpg_drop_stash
 install:
-  npm: npm install -g mpg-cli
+  npm: npm install -g mind-palace-graph
   source: git clone https://github.com/JadeZaher/mind-palace-graph && cd mind-palace-graph && npm install && npm run build && npm link
   verify: mpg --version
 ---
@@ -113,7 +113,7 @@ Three rules of thumb for the lifecycle:
 ## Quick start
 
 ```bash
-npm install -g mpg-cli && mpg --version
+npm install -g mind-palace-graph && mpg --version
 ```
 
 If running through an MCP-capable host (Claude Desktop, Claude Code,
@@ -544,6 +544,91 @@ Headline numbers from `BENCHMARKS.md` (oasis-sleek conductor tracks corpus — m
 Where mpg loses on the bench (worth knowing):
 - **Single-keyword lookups** where you only need a file:line list (T2 BLAKE3, T3 load_to_bevy in macro): rg is cheaper. Use `bash`/`grep` for one-word answers.
 - **Cold-start wall-clock**: ~200ms per CLI call. MCP server / programmatic import avoid this (the cost is paid once at boot).
+
+## Spawning mpg from another process (Windows-safe)
+
+If you are building an agent extension that spawns `mpg` as a child
+process (Pi extension, MCP wrapper, custom tool runner), do not just
+`spawn("mpg", args)` and hope for the best. The npm-installed `mpg`
+on Windows is a `.cmd` shim, and that shim interacts badly with
+`child_process.spawn`:
+
+- `spawn("mpg", args)` without `shell: true` → fails with `EINVAL`
+  because Node won't directly execute a `.cmd`.
+- `spawn("mpg", args, { shell: true })` → cmd.exe parses the entire
+  command line and splits on `&`, `|`, `^`, etc.; arguments
+  containing `--stdin`, `--git`, or anything with shell metacharacters
+  get **corrupted** before mpg's parser ever sees them. You see
+  errors like `'--stdin' is not recognized as an internal or
+  external command` (cmd.exe complaining) followed by `mpg: Unknown
+  argument: --git` (mpg seeing the wreckage).
+
+Two flags exist specifically to make subprocess integration painless:
+
+### 1. `mpg --print-entry` — skip the .cmd shim
+
+```bash
+mpg --print-entry
+# /usr/local/lib/node_modules/mind-palace-graph/dist/index.js
+```
+
+From a Node subprocess caller:
+
+```ts
+import { execSync, spawn } from "node:child_process";
+const entry = execSync("mpg --print-entry").toString().trim();
+spawn(process.execPath, [entry, "TODO", "--in", "src/"], {
+  stdio: ["ignore", "pipe", "pipe"],
+});
+```
+
+Or skip `execSync` entirely and import the path directly:
+
+```ts
+import { entryPath } from "mind-palace-graph/entry";
+spawn(process.execPath, [entryPath, "TODO", "--in", "src/"]);
+```
+
+`spawn(process.execPath, [entry, ...args])` runs Node on the resolved
+JS entry — no shell, no `.cmd`, no argv mangling. This is the
+recommended pattern for every Node-based agent that spawns mpg.
+
+### 2. `--pattern-file <path>` — keep the regex off argv
+
+When the pattern itself contains characters the shell might eat
+(quotes, backslashes, `&`, `|`, exotic regex syntax), write it to a
+temp file and pass `--pattern-file`:
+
+```ts
+import { writeFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const dir = mkdtempSync(join(tmpdir(), "mpg-"));
+const patternFile = join(dir, "pattern");
+writeFileSync(patternFile, exoticRegex);  // any string, any encoding
+
+spawn(process.execPath, [
+  entryPath,
+  "--pattern-file", patternFile,
+  "--in", "src/",
+  "--json",
+]);
+```
+
+Trailing newline is stripped. The file is mutually exclusive with a
+positional pattern. Use this for: regexes with shell metacharacters,
+patterns built from untrusted user input, anything you don't want
+to escape twice for both your shell and Windows cmd.exe.
+
+### Quick rule
+
+| Integration style | Recipe |
+| :--- | :--- |
+| MCP host (Claude Desktop, Cline, Windsurf) | The MCP server handles spawning. You don't need this section. |
+| Programmatic import (Anthropic / Google SDK harness) | `import { search } from "mind-palace-graph"` — no spawn at all. |
+| Custom subprocess caller (Pi extension, agent runner) | `spawn(process.execPath, [entryPath, ...args])`. Add `--pattern-file` for any non-trivial regex. **Never** `spawn("mpg", ...)` directly. |
 
 ## Read further (load on demand)
 

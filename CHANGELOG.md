@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.3.1 — Windows-safe subprocess integration
+
+Field-report patch: an agent spawning `mpg` from Node on Windows
+crashed with `'--stdin' is not recognized as an internal or external
+command` followed by `mpg: Unknown argument: --git`. Root cause:
+the npm-installed `mpg` is a `.cmd` shim, and `child_process.spawn`
+either `EINVAL`s on it (without `shell: true`) or has cmd.exe mangle
+argv (with `shell: true`). Both new flags exist to let subprocess
+callers bypass the shim entirely and keep exotic patterns off argv.
+
+### New flags
+
+- **`mpg --print-entry`** — prints the resolved JS entry path
+  (`dist/index.js`) and exits 0. Lets Node callers do
+  `spawn(process.execPath, [entry, ...args])` and skip the `.cmd`
+  shim. Works identically on macOS, Linux, Windows.
+- **`mpg --pattern-file <path>`** — reads the regex pattern from a
+  file (single trailing `\n` or `\r\n` stripped). Mutually exclusive
+  with the positional pattern. Use for regexes with shell
+  metacharacters, patterns built from untrusted input, or anywhere
+  you don't want to escape twice for both your shell and cmd.exe.
+
+### New programmatic export
+
+- **`import { entryPath } from "mind-palace-graph/entry"`** —
+  side-effect-free import that yields the same path as
+  `--print-entry`. Importing it does NOT execute the CLI. Powered
+  by a new `exports` map in `package.json` (`.` still resolves to
+  the CLI; `./entry` is the new tiny module).
+
+### Docs
+
+- **SKILL.md** gained a "Spawning mpg from another process
+  (Windows-safe)" section with the explicit failure modes and the
+  three integration recipes (MCP / programmatic / subprocess).
+- **INSTALL.md** gained a top-level "Calling mpg from Node
+  subprocesses (Windows-safe)" section. The Pi Agent section now
+  points at it from the "spawning from a Pi extension" subsection.
+
+### Tests
+
+Smoke tests 64–66 cover: `--print-entry` round-trips through a fresh
+node spawn; `dist/entry.js` import is side-effect free; `--pattern-file`
+reads patterns correctly, strips newlines, and rejects conflict /
+empty / missing. 186/186 pass.
+
 ## 0.3.0 — rename to mpg / mind-palace-graph (hard cut, no aliases)
 
 Breaking: CLI renamed from `mdg` to `mpg`. Project name is now mind-palace-graph.

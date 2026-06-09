@@ -152,6 +152,8 @@ searches can use them as inputs.
 | `--ls` / `--tree` | `mpg --ls --in src/` | List/tree all searchable files under the given paths and exit. |
 | `-h, --help` | `mpg --help` | Show inline help. |
 | `-v, --version` | `mpg --version` | Print version. |
+| `--print-entry` | `mpg --print-entry` | Print the resolved JS entry path (`dist/index.js`) and exit. Lets Node subprocess callers do `spawn(process.execPath, [entry, ...args])` and skip the `.cmd` shim that breaks on Windows. See [Calling mpg from another process](#calling-mpg-from-another-process). |
+| `--pattern-file <path>` | `mpg --pattern-file /tmp/p --in src/` | Read the regex pattern from a file (trailing newline stripped). Mutually exclusive with the positional pattern. Keeps exotic regexes off argv — use for patterns with shell metacharacters or untrusted input. |
 
 ### Environment variables
 
@@ -539,6 +541,61 @@ openai.tools.create({ name: "mpg", ...toolDefinition });
 ```
 
 The API mirrors the CLI 1:1 — every flag has a corresponding option.
+
+## Calling mpg from another process
+
+If you spawn `mpg` from Node `child_process.spawn` rather than from a
+shell, Windows needs care. The npm-installed `mpg` on Windows is a
+`.cmd` shim, and the two obvious approaches both fail:
+
+| Approach | What happens on Windows |
+| :--- | :--- |
+| `spawn("mpg", args)` | `EINVAL` — Node won't directly execute a `.cmd`. |
+| `spawn("mpg", args, { shell: true })` | cmd.exe parses the line and splits on `&`/`\|`/`^`/etc.; flags get **corrupted** before mpg sees them. Typical symptom: `'--stdin' is not recognized as an internal or external command` followed by `mpg: Unknown argument: --git`. |
+
+The Windows-safe pattern is to spawn `node` directly on mpg's resolved
+JS entry, bypassing the shim:
+
+```ts
+import { spawn } from "node:child_process";
+import { entryPath } from "mind-palace-graph/entry";
+
+const proc = spawn(process.execPath, [
+  entryPath,
+  "TODO", "--in", "src/", "--json",
+], { stdio: ["ignore", "pipe", "pipe"] });
+```
+
+`entryPath` is exported by the side-effect-free `mind-palace-graph/entry`
+subpath (importing it does NOT execute the CLI). For non-Node callers,
+`mpg --print-entry` prints the same path on stdout.
+
+For regexes that contain shell metacharacters (quotes, backslashes, `&`,
+`|`, parens), write the pattern to a temp file and pass `--pattern-file`
+so the pattern never crosses argv:
+
+```ts
+import { writeFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const dir = mkdtempSync(join(tmpdir(), "mpg-"));
+const patternFile = join(dir, "p");
+writeFileSync(patternFile, exoticRegex);
+
+spawn(process.execPath, [
+  entryPath, "--pattern-file", patternFile, "--in", "src/", "--json",
+]);
+```
+
+When to use each:
+
+| You are building... | Use |
+| :--- | :--- |
+| MCP host (Claude Desktop, Cline, Windsurf) | The MCP server. No subprocess concerns. |
+| Node agent that imports the SDK directly | `import { search } from "mind-palace-graph"`. No subprocess at all. |
+| Custom Node subprocess wrapper (Pi extension, agent runner) | `spawn(process.execPath, [entryPath, ...args])`. Add `--pattern-file` for non-trivial regexes. |
+| Shell-only agent (bash one-liners) | Plain `mpg ...` is fine — shells handle the shim correctly. The Windows footgun only hits when spawning *from another program*. |
 
 ## Path spec syntax
 

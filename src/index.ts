@@ -40,13 +40,19 @@ import {
   classifyPathSpecs,
   type ResolvedSource,
 } from "./sources.js";
-import { parseArgs, resolveConfig, HelpRequestedError, VersionRequestedError } from "./cli.js";
+import {
+  parseArgs,
+  resolveConfig,
+  HelpRequestedError,
+  PrintEntryRequestedError,
+  VersionRequestedError,
+} from "./cli.js";
 import { sampleMedianLineLength, WIDE_RECORD_MEDIAN_THRESHOLD } from "./api.js";
 import { buildFuzzyRegex, verifyFuzzy } from "./fuzzy.js";
 import type { Node, ResolvedConfig, Result, Source } from "./types.js";
 import type { Stash } from "./mind-palace.js";
 
-const VERSION = "0.3.0";
+const VERSION = "0.3.1";
 
 // Fuzzy matching is now in ./fuzzy.ts (trigram-union regex + Levenshtein
 // post-filter; handles drop/insert/substitute/swap up to edit distance 2).
@@ -65,6 +71,14 @@ async function main(): Promise<number> {
     }
     if (err instanceof VersionRequestedError) {
       process.stdout.write(`mpg ${VERSION}\n`);
+      return 0;
+    }
+    if (err instanceof PrintEntryRequestedError) {
+      // Print the resolved JS entry path. Node subprocess callers
+      // can then `spawn(process.execPath, [entry, ...args])` directly,
+      // bypassing the .cmd shim that breaks on Windows.
+      const { fileURLToPath } = await import("node:url");
+      process.stdout.write(fileURLToPath(import.meta.url) + "\n");
       return 0;
     }
     process.stderr.write(`mpg: ${(err as Error).message}\n`);

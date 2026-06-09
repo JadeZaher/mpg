@@ -228,6 +228,28 @@ from SKILL.md.
 - `conductor-context`: use mpg to find task-ID references
 - `subagent scout`: mpg complements scout for structured retrieval
 
+**5. Spawning mpg from a Pi extension (Node side):**
+
+If your Pi extension shells out to mpg with `child_process.spawn`,
+do **not** `spawn("mpg", args)` directly on Windows — the npm
+`mpg.cmd` shim either `EINVAL`s (no `shell: true`) or has its argv
+mangled by cmd.exe (`shell: true`). Use the resolved entry path
+instead:
+
+```ts
+import { spawn } from "node:child_process";
+import { entryPath } from "mind-palace-graph/entry";
+
+const proc = spawn(process.execPath, [
+  entryPath, "TODO", "--in", "src/", "--json",
+], { stdio: ["ignore", "pipe", "pipe"] });
+```
+
+For regexes that might contain shell metacharacters, write the
+pattern to a temp file and pass `--pattern-file <path>` instead of
+the positional argument. See "Calling mpg from Node subprocesses
+(Windows-safe)" below for the full recipe.
+
 ---
 
 ## Cline (VS Code)
@@ -351,6 +373,81 @@ mpg "TODO" --mp-compose stash-a stash-b --format json
 
 All output formats (`--format llm|markdown|json|text`) are designed to
 be consumed directly by an LLM.
+
+---
+
+## Calling mpg from Node subprocesses (Windows-safe)
+
+If you are building an agent extension that spawns `mpg` from Node
+(`child_process.spawn`), Windows is a minefield. On Windows the
+npm-installed `mpg` is a `.cmd` shim, and the two obvious approaches
+both break:
+
+| Approach | What happens on Windows |
+| :--- | :--- |
+| `spawn("mpg", args)` | `EINVAL` — Node cannot execute a `.cmd` directly. |
+| `spawn("mpg", args, { shell: true })` | cmd.exe parses the line, splits on `&`/`|`/`^`/etc.; flags containing these chars get **corrupted** before mpg sees them. Typical symptom: `'--stdin' is not recognized as an internal or external command` followed by `mpg: Unknown argument: --git`. |
+
+The Windows-safe pattern is to spawn `node` directly on mpg's
+resolved JS entry, bypassing the shim:
+
+```ts
+import { spawn, execSync } from "node:child_process";
+
+// Option A — discover the entry once at startup
+const entry = execSync("mpg --print-entry").toString().trim();
+
+// Option B — if your code is itself a Node package, just import it
+//   import { entryPath as entry } from "mind-palace-graph/entry";
+
+const proc = spawn(process.execPath, [
+  entry,
+  "TODO",
+  "--in", "src/",
+  "--json",
+], {
+  stdio: ["ignore", "pipe", "pipe"],
+});
+```
+
+`process.execPath` is the running Node binary. No `.cmd`, no shell,
+no argv mangling. Works identically on macOS, Linux, Windows.
+
+### Patterns with shell metacharacters
+
+If the regex itself contains characters the shell could eat (quotes,
+backslashes, `&`, `|`, `^`, parens, etc.), write it to a temp file and
+pass `--pattern-file <path>` so the pattern never crosses argv:
+
+```ts
+import { writeFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const dir = mkdtempSync(join(tmpdir(), "mpg-"));
+const patternFile = join(dir, "pattern");
+writeFileSync(patternFile, exoticRegex);  // any string, any encoding
+
+spawn(process.execPath, [
+  entry,
+  "--pattern-file", patternFile,
+  "--in", "src/",
+  "--json",
+]);
+```
+
+`--pattern-file` strips a single trailing `\n` or `\r\n`. It is
+mutually exclusive with a positional pattern; the CLI exits with an
+error if both are passed.
+
+### When to use each
+
+| You are building... | Use |
+| :--- | :--- |
+| MCP-based agent (Claude Desktop, Cline, Windsurf) | The MCP server. No subprocess concerns. |
+| Node-based agent that imports the SDK directly | `import { search } from "mind-palace-graph"`. No subprocess at all. |
+| Custom Node subprocess wrapper (Pi extension, agent runner) | `spawn(process.execPath, [entry, ...args])`. Add `--pattern-file` for non-trivial regexes. |
+| Shell-only agent (bash one-liners) | Plain `mpg ...` is fine — shells handle the shim correctly. The Windows footgun only hits when spawning *from another program*. |
 
 ---
 

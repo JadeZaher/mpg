@@ -10,6 +10,7 @@
  * validates the final config.
  */
 
+import { readFileSync } from "node:fs";
 import type {
   Effort,
   OutputFormat,
@@ -95,6 +96,16 @@ export interface RawArgs {
   fuzzy: boolean;
   help: boolean;
   version: boolean;
+  // Subprocess-friendly entry: prints the resolved JS entry path and exits.
+  // Lets Node callers do `spawn(process.execPath, [entry, ...args])` and
+  // skip the .cmd shim that breaks on Windows when invoked from a child
+  // process without `shell: true` (and corrupts argv with `shell: true`).
+  printEntry: boolean;
+  // Off-argv pattern delivery. The pattern is read from this file's
+  // contents (trailing newline stripped). Avoids every shell-escaping
+  // concern when a JS caller is spawning mpg: write the regex to a temp
+  // file, pass --pattern-file <path>, done.
+  patternFile?: string;
 }
 
 export const EFFORT_PRESETS: Record<Effort, { before: number; after: number; maxNodes: number }> = {
@@ -187,6 +198,18 @@ SEARCH OPTIONS (forwarded to ripgrep)
 OTHER
   -h, --help                Show this help
   -v, --version             Show version
+      --print-entry         Print the resolved JS entry path and exit.
+                            Use this from a Node subprocess to avoid
+                            the .cmd shim on Windows:
+                              const entry = execSync("mpg --print-entry").toString().trim();
+                              spawn(process.execPath, [entry, "TODO", "--in", "src/"]);
+      --pattern-file <path> Read the regex pattern from a file
+                            (trailing newline stripped). Use when
+                            spawning mpg from another process to
+                            keep the pattern off argv (avoids shell
+                            quoting and Windows cmd.exe argv mangling).
+                            Mutually exclusive with the positional
+                            pattern argument.
 
 PAGINATION (for finer-grained traversal of large result sets)
       --page <n>            Show only the Nth page of results (1-indexed).
@@ -353,6 +376,7 @@ export function parseArgs(argv: string[]): RawArgs {
     fuzzy: false,
     help: false,
     version: false,
+    printEntry: false,
   };
 
   let i = 0;
@@ -365,6 +389,10 @@ export function parseArgs(argv: string[]): RawArgs {
 
     if (a === "-h" || a === "--help")    { args.help = true; i++; continue; }
     if (a === "-v" || a === "--version") { args.version = true; i++; continue; }
+    if (a === "--print-entry")           { args.printEntry = true; i++; continue; }
+    if (a === "--pattern-file") {
+      args.patternFile = requireValue(a, argv, ++i); i++; continue;
+    }
 
     if (a === "-i" || a === "--in") {
       // Greedy: consume every subsequent non-flag arg as a path.
@@ -596,10 +624,32 @@ function requireValue(flag: string, argv: string[], i: number): string {
 export function resolveConfig(raw: RawArgs): ResolvedConfig {
   if (raw.help) throw new HelpRequestedError();
   if (raw.version) throw new VersionRequestedError();
+  if (raw.printEntry) throw new PrintEntryRequestedError();
 
   // Pattern is optional: required for searches and for --mp-from /
   // --mp-compose, but not for --mp-list, --mp-get, or --mp-drop.
-  const pattern = raw.pattern ?? process.env.MPG_PATTERN;
+  // Precedence: --pattern-file > positional > MPG_PATTERN env. The
+  // file route exists for subprocess callers who want to keep the
+  // regex off argv entirely (shell quoting and Windows cmd.exe both
+  // mangle exotic patterns).
+  let filePattern: string | undefined;
+  if (raw.patternFile) {
+    if (raw.pattern !== undefined) {
+      throw new Error("--pattern-file is mutually exclusive with a positional pattern.");
+    }
+    // Synchronous on purpose — resolveConfig is sync everywhere else.
+    // The file is expected to be small (a regex), so the read cost is
+    // negligible and avoids leaking async through the whole stack.
+    try {
+      filePattern = readFileSync(raw.patternFile, "utf8").replace(/\r?\n$/, "");
+    } catch (err) {
+      throw new Error(`--pattern-file: cannot read ${raw.patternFile}: ${(err as Error).message}`);
+    }
+    if (filePattern.length === 0) {
+      throw new Error(`--pattern-file: ${raw.patternFile} is empty.`);
+    }
+  }
+  const pattern = filePattern ?? raw.pattern ?? process.env.MPG_PATTERN;
   const needsPattern =
     !raw.ls && (
     raw.inPaths.length > 0 ||
@@ -755,6 +805,9 @@ export function resolveConfig(raw: RawArgs): ResolvedConfig {
 
 export class HelpRequestedError extends Error {
   constructor() { super("help requested"); this.name = "HelpRequestedError"; }
+}
+export class PrintEntryRequestedError extends Error {
+  constructor() { super("print entry requested"); this.name = "PrintEntryRequestedError"; }
 }
 export class VersionRequestedError extends Error {
   constructor() { super("version requested"); this.name = "VersionRequestedError"; }

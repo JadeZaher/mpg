@@ -11,6 +11,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 let failed = 0;
 let passed = 0;
@@ -1006,6 +1007,91 @@ function main() {
     const dry = spawnSync("node", [cliPath, "--mp-prune-expired", "--mp-prune-dry-run", "--no-color"], { encoding: "utf8", env });
     assert(dry.status === 0, `--mp-prune-expired parses (got exit ${dry.status})`);
     assert(!/Unknown argument/.test(dry.stderr), "no 'Unknown argument' error");
+  }
+
+  // Test 64: --print-entry returns the resolved CLI path. Lets Node
+  // subprocess callers `spawn(process.execPath, [entry, ...args])` and
+  // skip the .cmd shim that's broken on Windows.
+  process.stdout.write("\nTest 64: --print-entry returns resolved CLI path\n");
+  {
+    const r = runMpg(["--print-entry"]);
+    assert(r.code === 0, `exit code 0 (got ${r.code})`);
+    const printed = r.stdout.trim();
+    assert(existsSync(printed), `printed path exists on disk: ${printed}`);
+    assert(printed.endsWith("index.js"), "printed path ends with index.js");
+    // Smoke test the documented usage pattern: spawn node with the
+    // printed path. If this works, downstream subprocess callers work.
+    const cliPath = resolve(process.cwd(), "dist/index.js");
+    const piped = spawnSync("node", [printed, "--version"], { encoding: "utf8" });
+    assert(piped.status === 0, `re-invocation via printed entry works (got ${piped.status})`);
+    assert(/^mpg /.test(piped.stdout), `re-invocation prints version: ${piped.stdout.slice(0, 40)}`);
+    // Sanity: the printed entry matches the path we use everywhere else
+    // in this file (resolves to the same file).
+    assert(resolve(printed) === resolve(cliPath), "printed path matches dist/index.js");
+  }
+
+  // Test 65: entryPath export from the package surface. Same value
+  // as --print-entry, but importable from Node without spawning the
+  // CLI just to learn its path. dist/entry.js is the side-effect-free
+  // export — importing it must NOT trigger the CLI's `main()`.
+  process.stdout.write("\nTest 65: dist/entry.js exports entryPath safely\n");
+  {
+    const entryModulePath = resolve(process.cwd(), "dist/entry.js");
+    assert(existsSync(entryModulePath), "dist/entry.js was built");
+    // Node's ESM loader requires file:// URLs for absolute paths on
+    // Windows (a raw C:\ path is rejected as ERR_UNSUPPORTED_ESM_URL_SCHEME).
+    const importSpec = pathToFileURL(entryModulePath).href;
+    const probe = spawnSync("node", [
+      "--input-type=module",
+      "-e",
+      `import("${importSpec}").then(m => process.stdout.write(m.entryPath));`,
+    ], { encoding: "utf8" });
+    assert(probe.status === 0, `import probe exits 0 (got ${probe.status}): ${probe.stderr}`);
+    const exported = probe.stdout.trim();
+    assert(existsSync(exported), `exported entryPath exists: ${exported}`);
+    assert(exported.endsWith("index.js"), "exported entryPath ends with index.js");
+    // Critically: the import must not have produced any CLI output
+    // (no "mpg:" stderr, no help text, no result body) — the entry
+    // module must be side-effect free.
+    assert(!/mpg:/.test(probe.stderr), `no CLI side effects on import: ${probe.stderr.slice(0, 80)}`);
+  }
+
+  // Test 66: --pattern-file reads the regex from a file. The whole
+  // point is that the pattern never touches argv, so a JS caller
+  // doesn't have to worry about Windows cmd.exe argv mangling. We
+  // also verify --pattern-file is mutually exclusive with a
+  // positional pattern, and rejects empty files.
+  process.stdout.write("\nTest 66: --pattern-file works for off-argv patterns\n");
+  {
+    const patternFile = join(fixtures, ".pattern");
+    writeFileSync(patternFile, "TODO\n");
+    const r = runMpg(["--pattern-file", patternFile, "--in", fixtures, "--no-color"]);
+    assert(r.code === 0, `exit code 0 (got ${r.code}): ${r.stderr}`);
+    assert(/TODO/.test(r.stdout), "pattern from file produces matches");
+
+    // Trailing newline must have been stripped — otherwise the regex
+    // 'TODO\n' would not match the file content.
+    const trailingNlFile = join(fixtures, ".pattern-nl");
+    writeFileSync(trailingNlFile, "TODO\r\n");
+    const r2 = runMpg(["--pattern-file", trailingNlFile, "--in", fixtures, "--no-color"]);
+    assert(r2.code === 0, `\\r\\n stripped (got ${r2.code}): ${r2.stderr}`);
+
+    // Mutual exclusivity: positional + --pattern-file should error.
+    const conflict = runMpg(["TODO", "--pattern-file", patternFile, "--in", fixtures, "--no-color"]);
+    assert(conflict.code !== 0, "mutual exclusivity enforced");
+    assert(/mutually exclusive/.test(conflict.stderr), "error mentions mutual exclusivity");
+
+    // Empty file: error.
+    const emptyFile = join(fixtures, ".pattern-empty");
+    writeFileSync(emptyFile, "");
+    const empty = runMpg(["--pattern-file", emptyFile, "--in", fixtures, "--no-color"]);
+    assert(empty.code !== 0, "empty pattern file rejected");
+    assert(/empty/i.test(empty.stderr), "error mentions empty");
+
+    // Missing file: error.
+    const missing = runMpg(["--pattern-file", join(fixtures, "nope.txt"), "--in", fixtures, "--no-color"]);
+    assert(missing.code !== 0, "missing pattern file rejected");
+    assert(/cannot read/i.test(missing.stderr), "error mentions cannot read");
   }
 
   // Cleanup.
