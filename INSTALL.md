@@ -14,7 +14,7 @@ the agent executes tools:
 | **Cursor** | Shell command or MCP | Medium |
 | **Aider** | `/run` command | Easy |
 | **Continue.dev** | MCP server | Easy |
-| **Any agent that can shell out** | `npm install -g mpg-cli` | Trivial |
+| **Any agent that can shell out** | `npm install -g mind-palace-graph` | Trivial |
 
 ---
 
@@ -24,7 +24,7 @@ the agent executes tools:
 # Requires Node 20+ and ripgrep
 # Install ripgrep: https://github.com/BurntSushi/ripgrep#installation
 
-npm install -g mpg-cli
+npm install -g mind-palace-graph
 # or from source:
 git clone https://github.com/JadeZaher/mind-palace-graph.git
 cd mind-palace-graph && npm install && npm run build && npm link
@@ -47,7 +47,7 @@ exploration, research threading, memory management, file
 summarization, cross-stack search) with concrete invocations and the
 behaviors you can rely on.
 
-**Recommended setup pass after `npm install -g mpg-cli`:**
+**Recommended setup pass after `npm install -g mind-palace-graph`:**
 
 1. Read `skills/mpg-context/SKILL.md` end to end.
 2. Identify the user's global agent config (e.g. `~/.claude/CLAUDE.md`
@@ -155,7 +155,7 @@ and pagination.
 Import the pre-built tool definitions:
 
 ```ts
-import { claudeTools, search, stash, listStashes, getStash, dropStash } from "mpg-cli";
+import { claudeTools, search, stash, listStashes, getStash, dropStash } from "mind-palace-graph";
 
 // Register tools with Claude
 const response = await anthropic.messages.create({
@@ -189,7 +189,7 @@ has `type: "function"` and `function: { name, description, parameters }`).
 Import the Gemini-compatible definitions:
 
 ```ts
-import { geminiTools, search, stash, listStashes } from "mpg-cli";
+import { geminiTools, search, stash, listStashes } from "mind-palace-graph";
 
 const model = genAI.getGenerativeModel({
   model: "gemini-2.5-pro",
@@ -216,7 +216,7 @@ cp skills/mpg-context/SKILL.md ~/.pi/agent/skills/mpg-context/SKILL.md
 
 ```bash
 npm link  # from the mind-palace-graph repo
-# or: npm install -g mpg-cli
+# or: npm install -g mind-palace-graph
 ```
 
 **3. The skill auto-loads** when Pi is in a project where codebase

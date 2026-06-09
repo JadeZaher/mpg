@@ -254,7 +254,7 @@ snippet came from.
 Requires [Node 20+](https://nodejs.org) and [ripgrep](https://github.com/BurntSushi/ripgrep).
 
 ```bash
-npm install -g mpg-cli
+npm install -g mind-palace-graph
 # or from source:
 git clone https://github.com/JadeZaher/mind-palace-graph.git
 cd mind-palace-graph && npm install && npm run build && npm link
@@ -514,7 +514,7 @@ For TS/Node harnesses that prefer to embed `mpg` rather than shell
 out, the `mpg` package exports a programmatic API:
 
 ```ts
-import { search, stash, listStashes, toolDefinition } from "mpg-cli";
+import { search, stash, listStashes, toolDefinition } from "mind-palace-graph";
 
 const result = await search({
   pattern: "TODO",

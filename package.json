@@ -1,5 +1,5 @@
 {
-  "name": "mpg-cli",
+  "name": "mind-palace-graph",
   "version": "0.3.0",
   "description": "Node-centric context retrieval CLI for LLM harnesses. Token-budgeted search with effort presets, mind palace (stash/drop/compose/relationships), pagination, MCP server, multi-tool schemas for Claude & Gemini.",
   "type": "module",
