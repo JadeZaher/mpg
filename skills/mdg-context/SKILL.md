@@ -227,6 +227,125 @@ context: `url` is capped at 16 MB and 30 s with a content-type guard;
 `cmd` is capped at 64 MB and 60 s. Past those, mdg returns truncated
 output with a marker — not a hung agent.
 
+**8. `window_curve` — token sculpting across ranked results**
+
+`window_curve` decides how aggressively per-node windows shrink as you
+go down the ranked list. It's the single biggest lever for making one
+search call match the *shape* of how an LLM actually consumes results:
+the first hit usually needs full context, the tenth probably just
+needs a line and a half. Saving tokens past the first few ranks frees
+budget for more nodes overall.
+
+Three curves, each with a specific use case:
+
+| Curve | Shape | Use when |
+| :--- | :--- | :--- |
+| `flat` (default) | Every node gets the full `before`/`after` window. | You need uniform context across all hits. Fine when `max_nodes` is tight (≤5). |
+| `linear` | Window shrinks linearly from 100% at rank 0 to ~10% at the last rank. | **"What just changed?" browsing.** Pair with `sort: "recent"` — newest file gets full context, older files get a one-liner each. Roughly 40-50% token savings vs `flat` at the same `max_nodes`. |
+| `log` | Window decays as `full / log2(rank + 2)`. Gentler — rank 5 keeps ~38% of full context, not ~50% like linear. | **Multi-hit synthesis.** When ranks 2–10 still carry signal you'd hate to truncate. Used by the compaction pattern. ~53% token savings vs flat. |
+
+Concrete invocations:
+
+```ts
+// "What changed in auth recently?" — newest file gets a full read,
+// older ones get disambiguating snippets.
+mdg_search({
+  pattern: "session|token|auth",
+  in: ["src/auth/"],
+  effort: "deep",
+  sort: "recent",
+  window_curve: "linear",
+})
+
+// Compaction — the canonical 0-LLM-cost summary pattern. log curve
+// keeps the top 3 hits substantial while letting the long tail shrink.
+mdg_search({
+  pattern: "auth|JWT|Bearer|ProviderContext",
+  in: ["."],
+  effort: "scan",
+  clip_chars: 30,
+  sort: "recent",
+  window_curve: "log",
+  max_tokens: 2000,
+})
+
+// Use flat when you genuinely need all hits with equal weight (e.g.
+// reviewing every TODO before a release).
+mdg_search({
+  pattern: "TODO|FIXME",
+  in: ["src/"],
+  effort: "normal",
+  window_curve: "flat",  // default; named for clarity
+})
+```
+
+Rule of thumb: if you're using `sort: "recent"` or `"oldest"`, you
+almost always want a non-flat curve. Flat + sort wastes tokens on the
+ranks that already lost the prioritization battle. The two go
+together.
+
+**9. Linked palace nodes — building a graph of investigation threads**
+
+Stashes are powerful by themselves, but the real win on a multi-day
+investigation is when you can **traverse between them by intent**, not
+by remembering names. `--mp-link` makes a directed edge between two
+stashes; `--mp-related` lists everything connected to a stash;
+`--mp-graph` walks the graph N levels deep.
+
+When to link (and what edge types to use):
+
+| Edge type | Meaning | Example |
+| :--- | :--- | :--- |
+| `depends-on` | "B is a precondition for understanding A" | `mdg --mp-link auth-rewrite db-schema depends-on "new tables back the migration"` |
+| `supersedes` | "A is the current view; B is the old one" | `mdg --mp-link auth-v2 auth-v1 supersedes "post-rewrite, ignore v1"` |
+| `see-also` | "B is a related thread you'll want when reading A" | `mdg --mp-link rate-limit-impl rate-limit-docs see-also "implementation ↔ design"` |
+| `parent-of` / `child-of` | Subtopics of a larger investigation | `mdg --mp-link epic-payments stripe-webhooks parent-of "webhook handling is part of payments"` |
+| `blocks` | "A can't ship without resolving B" | `mdg --mp-link release-v3 schema-migration blocks "must run migration first"` |
+| `contradicts` | "A and B disagree — needs reconciliation" | `mdg --mp-link spec-claim impl-reality contradicts "spec says X, code does Y"` |
+
+Edge types are conventional strings, not enforced — pick any
+vocabulary, but stay consistent within one investigation.
+
+Typical workflow:
+
+```bash
+# 1. Build stashes as you investigate, with consistent tags
+mdg "JWT" --in src/auth/  --mp-stash auth-jwt   --mp-tag rewrite --mp-ttl 24h
+mdg "JWT" --in docs/spec/ --mp-stash spec-jwt   --mp-tag rewrite --mp-ttl 24h
+mdg "JWT" --in src/legacy/ --mp-stash legacy-jwt --mp-tag rewrite --mp-ttl 24h
+
+# 2. Link them as you discover relationships
+mdg --mp-link auth-jwt spec-jwt see-also "implementation of the spec"
+mdg --mp-link auth-jwt legacy-jwt supersedes "post-rewrite, legacy goes away"
+
+# 3. Next session: navigate by intent, not by name
+mdg --mp-related auth-jwt           # show neighbors + edge labels
+mdg --mp-graph auth-jwt 2           # BFS two hops out
+```
+
+Rules of thumb:
+
+1. **Only link what you'll traverse.** Edges are cheap, but a graph
+   nobody walks is just noise on `--mp-related`. If you wouldn't run
+   `--mp-graph` later, don't link.
+2. **Link when discovery is fresh.** The right time to add an edge is
+   the moment you notice the relationship — three sessions later you
+   won't remember why two stashes mattered together.
+3. **One vocabulary per investigation.** Mixing `depends-on` and
+   `requires` for the same concept makes traversal noisy. Pick one
+   and stick to it; rename via unlink/relink if you change your mind.
+4. **`--mp-graph` is your "context resurrection" tool.** When a
+   conversation gets compacted away and you need to rebuild the
+   thread, `mdg --mp-graph <root> 3` reconstructs the investigation
+   topology in one CLI call.
+5. **Don't link across unrelated tasks.** If you're disciplined about
+   one palace per task (`MDG_MIND_PALACE=.mdg/<task>.json`), this is
+   automatic — cross-task links can't even be expressed.
+
+The full set of graph operations is CLI-only (not MCP yet) —
+`--mp-link`, `--mp-unlink`, `--mp-related`, `--mp-graph`. See
+`references/mind-palace.md` for the storage format.
+
 ### Behavior you can rely on
 
 These are the load-bearing guarantees worth quoting at yourself before

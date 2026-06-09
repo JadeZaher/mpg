@@ -69,25 +69,88 @@ The MCP tools today expose `from` and `compose` only — drop to CLI for
 
 ## Relationships (the graph in markdowngraphcli)
 
-Stashes can be linked into a directed graph. Useful for tracking
-dependency, supersession, or cross-references between investigation
-threads.
+Stashes can be linked into a directed graph. The graph is what lets
+you **traverse the investigation by intent** instead of by remembering
+stash names — `--mp-graph <root> 3` reconstructs an entire thread
+topology in one CLI call, which is the lifeline when a conversation
+gets compacted away mid-task.
 
 | CLI flag | What it does |
 | :--- | :--- |
 | `--mp-link <from> <to> <type> [note]` | Create a directed edge. |
 | `--mp-unlink <from> <to>` | Remove an edge. |
 | `--mp-related <name>` | Show all inbound + outbound neighbors of `name`. |
-| `--mp-graph <name> [depth]` | Traversal from `name` up to `[depth]` levels (default 3). |
+| `--mp-graph <name> [depth]` | BFS traversal from `name` up to `[depth]` levels (default 3). |
 
-Edge types are conventional but not enforced: `depends-on`,
-`related-to`, `see-also`, `parent-of`, `child-of`, `supersedes`, or
-any custom string.
+### Edge type conventions
+
+Edge types are unenforced strings, but consistent vocabulary makes the
+graph readable later. Common types:
+
+| Type | Meaning |
+| :--- | :--- |
+| `depends-on` | "Reading B is a prerequisite for reading A." |
+| `supersedes` | "A is the current view; B is the old one. Ignore B." |
+| `see-also` | "B is a related thread worth surfacing alongside A." |
+| `parent-of` / `child-of` | Hierarchical decomposition of one investigation into subtopics. |
+| `blocks` | "A can't ship until B is resolved." |
+| `contradicts` | "A and B disagree — reconciliation needed." |
+
+Pick a vocabulary at the start of an investigation and stay consistent
+within it. Mixing `depends-on` with `requires` for the same concept
+makes `--mp-graph` output noisy without adding signal.
+
+### Workflow: tracking a multi-thread investigation
+
+The pattern that pays off: build stashes as you investigate (always
+with TTLs + tags), link them the moment you notice a relationship,
+then traverse by intent in future sessions.
 
 ```bash
-mdg --mp-link auth-todos perf-hotspots depends-on "shared db layer"
-mdg --mp-graph auth-todos 3
+# Session 1 — building the topology
+mdg "JWT" --in src/auth/   --mp-stash auth-jwt    --mp-tag rewrite --mp-ttl 24h
+mdg "JWT" --in docs/spec/  --mp-stash spec-jwt    --mp-tag rewrite --mp-ttl 24h
+mdg "JWT" --in src/legacy/ --mp-stash legacy-jwt  --mp-tag rewrite --mp-ttl 24h
+
+mdg --mp-link auth-jwt spec-jwt   see-also   "implementation of the spec"
+mdg --mp-link auth-jwt legacy-jwt supersedes "post-rewrite, legacy goes away"
+
+# Session 2 — navigation, no need to remember names
+mdg --mp-related auth-jwt   # one-hop neighbors with edge labels
+mdg --mp-graph auth-jwt 3   # full BFS, three hops out
+
+# When the conversation gets compacted and you've lost the thread:
+mdg --mp-graph <known-root> 3
+# → reconstructs the whole investigation topology, with edge types
+#   that tell you what's current, what's superseded, what blocks what.
 ```
+
+### When to link (and when not to)
+
+1. **Only link what you'll traverse.** Edges are cheap to make and
+   cheap to store, but a graph nobody walks is just noise on
+   `--mp-related`. If you wouldn't run `--mp-graph` later, skip the
+   link.
+2. **Link when discovery is fresh.** The right moment is when you
+   notice the relationship. Three sessions later you won't remember
+   why two stashes mattered together.
+3. **Don't link across unrelated tasks.** If you maintain one palace
+   per task (`MDG_MIND_PALACE=.mdg/<task>.json`), this is automatic —
+   cross-task links can't even be expressed.
+4. **Relink with confidence — it's atomic.** `--mp-unlink` then
+   `--mp-link` is a no-op-loss operation; the diff-based save in
+   v0.2.5 ensures both edits land cleanly even under concurrent
+   writers.
+
+### Quick examples by use case
+
+| Situation | Linkage |
+| :--- | :--- |
+| Refactor that obsoletes an old subsystem | `--mp-link new-impl old-impl supersedes "after-rewrite"` |
+| Implementation depends on a shared library you've already mapped | `--mp-link feature-x lib-y depends-on "uses Y's session API"` |
+| Spec and code drift you need to reconcile | `--mp-link spec-claim impl-reality contradicts "spec says X, code does Y"` |
+| Decomposing an epic into discrete threads | `--mp-link epic-payments stripe-webhooks child-of` then `--mp-graph epic-payments 2` to walk the whole epic |
+| Cross-referencing parallel tracks (impl + tests + docs) | Three stashes, two `see-also` edges between them |
 
 ## Pruning
 
