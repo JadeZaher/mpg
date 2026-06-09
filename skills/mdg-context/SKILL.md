@@ -156,6 +156,54 @@ mdg_search({
 
 On the compaction bench, this single CLI call beats LLM-driven summarization (67% pass vs 33%) at **zero LLM input tokens**. Use when you'd otherwise spend a 50k-token summarization round-trip.
 
+**5. Whole-repo scan ("does X appear anywhere?")**
+
+```ts
+mdg_search({ pattern: "ProviderContext", in: ["."], effort: "scan", clip_chars: 20 })
+```
+
+Pass directories — including `.` — directly. The dir spec goes straight to ripgrep's parallel ignore-aware walk, so a full-repo scan is comparable to running `rg` itself rather than fanning out per file. Don't pre-expand to a file list in your harness; that's strictly slower.
+
+**6. Cross-cutting set-ops on stashed evidence**
+
+```bash
+# union: files matching either thread
+mdg_search({ pattern: "Redis", compose: ["rate-limit-impl", "rate-limit-docs"] })
+# intersection: files mentioned in BOTH threads (CLI only)
+mdg --mp-intersect rate-limit-impl rate-limit-docs
+# subtraction: in A but not in B (CLI only)
+mdg --mp-except rate-limit-impl --mp-except-name rate-limit-archived
+```
+
+Use this instead of "let me list both stashes and diff in my head." The set operations are O(stash count), not O(corpus).
+
+### Behavior you can rely on
+
+These are the load-bearing guarantees worth quoting at yourself before
+deciding whether to re-search vs recall:
+
+- **Directory scans are cheap.** `--in <dir>` passes through to rg's
+  parallel walk. You don't need to pre-expand a dir to a file list.
+- **Parallel `--mp-stash` calls don't lose data.** Two processes
+  stashing different findings at the same moment both land cleanly —
+  a tmp-file + rename plus a sibling `.lock` serialize the write step,
+  and a diff-based merge means each writer's intent (added X, modified
+  Y, removed Z) is replayed on top of fresh on-disk state.
+- **`--mp-drop` persists.** When drop reports success, the entry is
+  gone from disk and stays gone — even if a follow-up stash from
+  another process commits afterwards. Treat the exit code as truth.
+- **Pathological lines won't crash you.** Alternation patterns
+  (`(TODO|FIXME|HACK)`) over minified assets complete in tens of ms;
+  per-match text is hard-capped at 16 KB with a `…[clipped]` marker.
+- **Result status is honest.** `partial` means some sources errored;
+  `result.errors[]` is structured. A quiet `no_matches` is reliable;
+  a quiet `partial` is not — always inspect `errors[]` before
+  concluding "nothing here."
+- **Empty / whitespace-only fuzzy patterns throw**, instead of
+  silently matching every line and exploding the token budget.
+- **`--json` is an alias for `--format json`** (matches `rg`, `gh`,
+  `jq`). Either works; `--json` is shorter.
+
 ## The five MCP tools (signatures only)
 
 | Tool | Required params | Optional |

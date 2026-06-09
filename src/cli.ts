@@ -64,6 +64,7 @@ export interface RawArgs {
   mpPruneKeep?: number;
   mpPruneTag?: string;
   mpPruneAll: boolean;
+  mpPruneExpired: boolean;
   mpPruneConfirm: boolean;
   mpPruneDryRun: boolean;
   // TTL.
@@ -328,6 +329,7 @@ export function parseArgs(argv: string[]): RawArgs {
     mpExceptNames: [],
     mpIntersect: [],
     mpPruneAll: false,
+    mpPruneExpired: false,
     mpPruneConfirm: false,
     mpPruneDryRun: false,
     mpGraphDepth: 3,
@@ -404,6 +406,8 @@ export function parseArgs(argv: string[]): RawArgs {
       }
       args.format = v as OutputFormat; i++; continue;
     }
+    // Common ecosystem alias — rg/gh/jq all use --json as a shorthand.
+    if (a === "--json") { args.format = "json"; i++; continue; }
     if (a === "-I" || a === "--ignore-case") { args.ignoreCase = true; i++; continue; }
     if (a === "-w" || a === "--word")        { args.word = true; i++; continue; }
     if (a === "-F" || a === "--fixed-strings") { args.fixedStrings = true; i++; continue; }
@@ -482,6 +486,7 @@ export function parseArgs(argv: string[]): RawArgs {
     if (a === "--mp-prune-keep") { args.mpPruneKeep = parseInt(requireValue(a, argv, ++i), 10); i++; continue; }
     if (a === "--mp-prune-tag") { args.mpPruneTag = requireValue(a, argv, ++i); i++; continue; }
     if (a === "--mp-prune-all") { args.mpPruneAll = true; i++; continue; }
+    if (a === "--mp-prune-expired") { args.mpPruneExpired = true; i++; continue; }
     if (a === "--mp-prune-confirm") { args.mpPruneConfirm = true; i++; continue; }
     if (a === "--mp-prune-dry-run") { args.mpPruneDryRun = true; i++; continue; }
 
@@ -650,7 +655,7 @@ export function resolveConfig(raw: RawArgs): ResolvedConfig {
     raw.mpFrom || (raw.mpCompose && raw.mpCompose.length > 0) ||
     raw.mpExcept || (raw.mpIntersect && raw.mpIntersect.length > 0) ||
     raw.mpPruneOlderThan || raw.mpPruneKeep !== undefined || raw.mpPruneTag ||
-    raw.mpPruneAll || raw.mpTtl || raw.mpPath ||
+    raw.mpPruneAll || raw.mpPruneExpired || raw.mpTtl || raw.mpPath ||
     raw.mpLinkFrom || raw.mpUnlinkFrom || raw.mpRelated || raw.mpGraph
   ) {
     mind_palace = {
@@ -698,6 +703,7 @@ export function resolveConfig(raw: RawArgs): ResolvedConfig {
     if (raw.mpPruneKeep !== undefined) mind_palace.prune_keep = raw.mpPruneKeep;
     if (raw.mpPruneTag) mind_palace.prune_tag = raw.mpPruneTag;
     if (raw.mpPruneAll) mind_palace.prune_all = true;
+    if (raw.mpPruneExpired) mind_palace.prune_expired = true;
     mind_palace.prune_confirm = raw.mpPruneConfirm;
     mind_palace.prune_dry_run = raw.mpPruneDryRun;
   }

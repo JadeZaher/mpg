@@ -5,7 +5,7 @@
  * its pre/post context window, sized in tokens (not lines).
  */
 
-export type SourceType = "file" | "command" | "stdin" | "url";
+export type SourceType = "file" | "command" | "stdin" | "url" | "bulk";
 
 export type Effort = "scan" | "quick" | "normal" | "deep" | "auto";
 export type SortMode = "default" | "recent" | "oldest";
@@ -171,6 +171,8 @@ export interface MindPalaceOps {
   prune_tag?: string;
   /** --mp-prune-all: prune everything (requires --mp-prune-confirm). */
   prune_all?: boolean;
+  /** --mp-prune-expired: prune stashes whose TTL has elapsed. */
+  prune_expired?: boolean;
   /** --mp-prune-confirm: required for destructive prune ops. */
   prune_confirm?: boolean;
   /** --mp-prune-dry-run: show what would be pruned without deleting. */

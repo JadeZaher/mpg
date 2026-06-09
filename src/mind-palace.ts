@@ -157,9 +157,31 @@ function findGitRoot(start: string = process.cwd()): string | null {
  * work, but any save will throw unless MDG_FORCE_RESET=1.
  */
 const TAINTED = Symbol.for("mdg.palace.tainted");
+/**
+ * Full snapshot of the palace contents at load time. `savePalace` uses
+ * it to compute the **diff** this process made (added X / modified Y /
+ * removed Z), then re-applies that diff on top of whatever's actually
+ * on disk at save time. Without this, two parallel processes could
+ * each load a stale view, do disjoint mutations, save in sequence, and
+ * silently lose one writer's changes (or worse — resurrect a stash the
+ * other process dropped).
+ *
+ * Concretely: if process A's in-memory copy is missing stash X, that
+ * could mean (a) A loaded after X was created elsewhere — we should
+ * NOT drop X, or (b) A explicitly dropped X — we MUST drop it. The
+ * snapshot tells us which.
+ */
+const SNAPSHOT = Symbol.for("mdg.palace.snapshot");
 
 interface MaybeTaintedPalace extends Palace {
   [TAINTED]?: boolean;
+  [SNAPSHOT]?: Palace;
+}
+
+function deepCloneStashes(stashes: Record<string, Stash>): Record<string, Stash> {
+  // JSON round-trip is the cheapest correct deep clone for our shape;
+  // stashes are plain JSON-serializable.
+  return JSON.parse(JSON.stringify(stashes));
 }
 
 export function loadPalace(path: string): Palace {
@@ -186,6 +208,12 @@ export function loadPalace(path: string): Palace {
       parsed.stashes = {};
     }
     if (typeof parsed.version !== "number") parsed.version = PALACE_VERSION;
+    // Snapshot the loaded state. savePalace diffs current vs snapshot
+    // to know what THIS process intentionally added or removed.
+    (parsed as MaybeTaintedPalace)[SNAPSHOT] = {
+      version: parsed.version,
+      stashes: deepCloneStashes(parsed.stashes),
+    };
     return parsed;
   } catch (err) {
     // Preserve the corrupt file for forensics rather than silently
@@ -271,33 +299,94 @@ export function savePalace(path: string, palace: Palace): void {
   }
   const lock = acquireLock(path);
   try {
-    // Re-read the latest version under the lock and merge anything we
-    // didn't see. Two callers racing both loadPalace → mutate → save:
-    // without this re-read the second writer overwrites the first
-    // writer's stashes wholesale. With it, the second writer sees the
-    // first writer's stashes and merges.
+    // Compute the diff this process intentionally made: which stashes
+    // it added, modified, or removed relative to the snapshot it
+    // loaded. Then re-read whatever's actually on disk RIGHT NOW
+    // (which may have moved on since we loaded) and replay our diff on
+    // top of it. This is the only model that's correct under
+    // concurrent writers:
+    //
+    //   - A "removed by us" stash MUST stay removed even if another
+    //     writer's stale in-memory copy would otherwise re-add it.
+    //   - An "added by us" stash MUST land.
+    //   - A "modified by us" stash MUST take precedence over a
+    //     concurrent modification (last-writer-wins for the same name).
+    //   - A stash neither we nor another writer touched is untouched.
+    //   - A stash another writer added or modified, that we didn't
+    //     touch, is preserved.
+    //
+    // The previous v0.2.4 attempt at this merged the on-disk file back
+    // INTO our in-memory copy. That was wrong: it resurrected dropped
+    // stashes (the on-disk version still had them; we had removed them
+    // in memory; the merge "filled in the missing entry"). The fix is
+    // to merge in the other direction — our diff onto disk — and
+    // anchor "what did we do" to a snapshot taken at load time.
+    const snapshot = (palace as MaybeTaintedPalace)[SNAPSHOT];
+    const snapshotStashes = snapshot?.stashes ?? {};
+    const removedByUs = new Set<string>();
+    for (const name of Object.keys(snapshotStashes)) {
+      if (!(name in palace.stashes)) removedByUs.add(name);
+    }
+    const touchedByUs = new Set<string>(); // added OR modified by us
+    for (const [name, stash] of Object.entries(palace.stashes)) {
+      const before = snapshotStashes[name];
+      if (!before) {
+        touchedByUs.add(name); // added
+        continue;
+      }
+      // Modified iff the serialized form changed. JSON compare is
+      // adequate for our shape and avoids reference-equality false
+      // negatives after deepCloneStashes.
+      if (JSON.stringify(before) !== JSON.stringify(stash)) {
+        touchedByUs.add(name);
+      }
+    }
+
+    let merged: Palace;
     if (existsSync(path)) {
       try {
         const onDiskRaw = readFileSync(path, "utf8");
-        if (onDiskRaw.trim().length > 0) {
+        if (onDiskRaw.trim().length === 0) {
+          merged = { version: palace.version, stashes: {} };
+        } else {
           const onDisk = JSON.parse(onDiskRaw) as Palace;
-          if (onDisk && typeof onDisk === "object" && onDisk.stashes) {
-            for (const [name, stash] of Object.entries(onDisk.stashes)) {
-              if (!(name in palace.stashes)) {
-                palace.stashes[name] = stash;
-              }
-            }
+          if (!onDisk || typeof onDisk !== "object" || !onDisk.stashes) {
+            throw new Error("on-disk palace has no stashes object");
           }
+          merged = {
+            version: typeof onDisk.version === "number" ? onDisk.version : palace.version,
+            stashes: { ...onDisk.stashes },
+          };
         }
       } catch {
         // The on-disk file went corrupt between load and save. We
-        // hold the lock; let our copy win, but warn.
+        // hold the lock; fall back to our in-memory copy and warn.
         process.stderr.write(
           `mdg: on-disk palace at ${path} became unparseable between ` +
           `load and save; overwriting with in-memory copy.\n`,
         );
+        merged = { version: palace.version, stashes: { ...palace.stashes } };
       }
+    } else {
+      merged = { version: palace.version, stashes: {} };
     }
+
+    // Apply our diff on top of the freshest on-disk state.
+    for (const name of removedByUs) {
+      delete merged.stashes[name];
+    }
+    for (const name of touchedByUs) {
+      merged.stashes[name] = palace.stashes[name];
+    }
+    // Persist the merge result back into the in-memory palace so the
+    // caller can keep operating on a coherent view after savePalace.
+    palace.stashes = merged.stashes;
+    palace.version = merged.version;
+    (palace as MaybeTaintedPalace)[SNAPSHOT] = {
+      version: merged.version,
+      stashes: deepCloneStashes(merged.stashes),
+    };
+
     const tmpPath = `${path}.tmp.${process.pid}.${randomBytes(4).toString("hex")}`;
     writeFileSync(tmpPath, JSON.stringify(palace, null, 2) + "\n", "utf8");
     try {

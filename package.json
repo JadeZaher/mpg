@@ -1,6 +1,6 @@
 {
   "name": "mdg-cli",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Node-centric context retrieval CLI for LLM harnesses. Token-budgeted search with effort presets, mind palace (stash/drop/compose/relationships), pagination, MCP server, multi-tool schemas for Claude & Gemini.",
   "type": "module",
   "bin": {
@@ -31,6 +31,7 @@
     "bench:macro": "tsx bench/macro/run.ts",
     "bench:multiturn": "tsx bench/multiturn/run.ts",
     "bench:compaction": "tsx bench/compaction/run.ts",
+    "bench:perf": "tsx bench/perf/run.ts",
     "bench:agg": "tsx bench/aggregate.ts",
     "clean": "rm -rf dist"
   },

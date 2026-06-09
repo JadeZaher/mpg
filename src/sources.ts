@@ -160,6 +160,99 @@ export async function resolvePathSpecs(specs: string[], stdinContent?: string | 
   return [...out];
 }
 
+/**
+ * Split path specs into two buckets without expanding directories:
+ *
+ *   - `files`:    literal file paths the caller asked for. Each becomes
+ *                 a separate `runRg` invocation so they can be searched
+ *                 in parallel and their per-file content cache is hot.
+ *   - `bulk`:     directories and glob patterns. These get passed to
+ *                 rg as-is — rg walks them itself in parallel, much
+ *                 faster than fan-out-per-file from Node. Each bulk
+ *                 entry becomes one `runRg` invocation that may emit
+ *                 matches from many files.
+ *
+ * `@file` / `@-` are still expanded inline (the caller asked for an
+ * explicit list, so we respect that).
+ *
+ * Returns absolute paths so deduplication is stable across cwd-relative
+ * vs absolute inputs.
+ */
+export async function classifyPathSpecs(
+  specs: string[],
+  stdinContent?: string | null,
+): Promise<{ files: string[]; bulk: string[] }> {
+  const files = new Set<string>();
+  const bulk = new Set<string>();
+
+  function hasGlobMeta(s: string): boolean {
+    // Match characters that imply globbing. We don't try to handle
+    // brace expansion (`{a,b}`) — rg doesn't accept it on argv either,
+    // so we expand ourselves below.
+    return /[*?\[\]]/.test(s);
+  }
+
+  async function classify(spec: string) {
+    if (existsSync(spec)) {
+      const s = statSync(spec);
+      if (s.isFile()) {
+        files.add(resolvePath(spec));
+        return;
+      }
+      if (s.isDirectory()) {
+        // The big win: directories go to rg as-is. rg walks them
+        // itself in parallel, much faster than one rg invocation per
+        // file from Node.
+        bulk.add(resolvePath(spec));
+        return;
+      }
+    }
+    if (hasGlobMeta(spec)) {
+      // rg does NOT accept shell-style globs as path args. Expand
+      // ourselves to literal files so the search target list stays
+      // valid. The win against the old code is that *dirs* (the
+      // common case) now skip expansion.
+      const expanded = await expandGlobs([spec]);
+      for (const f of expanded) files.add(resolvePath(f));
+      return;
+    }
+    // Spec doesn't exist and has no glob meta — most likely a typo or
+    // a stale stash entry. Let rg surface the error rather than
+    // swallowing it silently.
+    bulk.add(spec);
+  }
+
+  for (const spec of specs) {
+    if (spec === "@-") {
+      const text = stdinContent ?? await getStdin();
+      for (const line of text.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        await classify(trimmed);
+      }
+      continue;
+    }
+    if (spec.startsWith("@")) {
+      const filePath = spec.slice(1);
+      let text: string;
+      try {
+        const { readFileSync } = await import("node:fs");
+        text = readFileSync(filePath, "utf8");
+      } catch (err) {
+        throw new Error(`Cannot read path list from @${filePath}: ${(err as Error).message}`);
+      }
+      for (const line of text.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        await classify(trimmed);
+      }
+      continue;
+    }
+    await classify(spec);
+  }
+  return { files: [...files], bulk: [...bulk] };
+}
+
 /** Classify a spec, expand globs, and add all files to `out`. */
 async function addExpanded(spec: string, out: Set<string>): Promise<void> {
   const t = classifyPath(spec);

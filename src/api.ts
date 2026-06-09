@@ -17,7 +17,7 @@ import {
   captureCommand,
   captureStdin,
   captureUrl,
-  resolvePathSpecs,
+  classifyPathSpecs,
 } from "./sources.js";
 import {
   addStash as addStashToPalace,
@@ -319,7 +319,15 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
     }
   }
 
-  const files = pathInputs.length > 0 ? await resolvePathSpecs(pathInputs) : [];
+  // Split into literal files (cheap per-file fan-out, hot content
+  // cache) vs bulk specs (dirs / globs / @file expansions of dirs)
+  // that we hand to rg as-is so it can do its own parallel walk.
+  // The old code expanded everything to per-file specs up front, which
+  // turned a `--in .` scan into hundreds of rg spawns — measured 30s+
+  // on the perf bench. Letting rg walk one spec is ~100ms.
+  const { files, bulk } = pathInputs.length > 0
+    ? await classifyPathSpecs(pathInputs)
+    : { files: [], bulk: [] };
 
   // Wide-record auto-tune. If the user didn't pass explicit
   // before/after and the corpus has very long lines (e.g. JSONL
@@ -336,10 +344,17 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
     }
   }
 
-  const resolved: Array<{ source: Source; content: string | null }> = files.map((f) => ({
-    source: { id: f, type: "file" },
+  // Explicit files first, then bulk specs. The ordering matters when
+  // `max_nodes` caps the result: a user who lists specific files
+  // alongside a dir means "I care about these specifically — show me
+  // their hits before you start mining the dir."
+  const resolved: Array<{ source: Source; content: string | null }> = files.map((f: string) => ({
+    source: { id: f, type: "file" as const },
     content: null,
   }));
+  for (const b of bulk) {
+    resolved.push({ source: { id: b, type: "bulk" }, content: null });
+  }
   if (opts.cmd) {
     const content = await captureCommand(opts.cmd);
     resolved.push({
@@ -376,30 +391,49 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
   };
 
   // Per-source scan worker. Returns the nodes for that source plus an
-  // optional error. We cache the source content on first match so a
-  // 1000-match file doesn't read from disk 1000 times.
+  // optional error.
+  //
+  // Content caching: each match comes back tagged with its actual file
+  // path (rg.ts overrides match.source for matches from file/bulk
+  // searches). We cache per-file so a 1000-match file reads once, AND
+  // a bulk search across many files doesn't accidentally reuse one
+  // file's content for another file's matches.
   async function scanSource(
     rs: typeof resolved[number],
     nodeBudget: number,
   ): Promise<{ nodes: Node[]; error: string | null }> {
     const out: Node[] = [];
-    let cachedContent: string | null = rs.content;
-    const seenLines = autoTuneApplied ? new Set<string>() : null;
+    // For inline-content sources (cmd/url/stdin) the source content is
+    // always `rs.content`; for file/bulk sources we cache per file path.
+    const inlineContent: string | null = rs.content;
+    const fileCache = new Map<string, string>();
+    // rg emits one match record per submatch. Two TODOs on one line
+    // (e.g. `// TODO: x; // TODO: y`) become two `Match` objects with
+    // identical `(source.id, line)`. We always dedup by line so each
+    // line contributes one node, regardless of auto-tune state.
+    const seenLines = new Set<string>();
     try {
       for await (const match of runRg(effectivePattern, rs.source, rs.content, rgOpts)) {
         if (out.length >= nodeBudget) break;
         if (opts.fuzzy) {
           if (!verifyFuzzy(match.text, match.match_start, opts.pattern, 2)) continue;
         }
-        if (seenLines) {
-          const key = `${match.source.id}:${match.line}`;
-          if (seenLines.has(key)) continue;
-          seenLines.add(key);
+        const lineKey = `${match.source.id}:${match.line}`;
+        if (seenLines.has(lineKey)) continue;
+        seenLines.add(lineKey);
+        let content: string;
+        if (inlineContent !== null) {
+          content = inlineContent;
+        } else {
+          const cached = fileCache.get(match.source.id);
+          if (cached !== undefined) {
+            content = cached;
+          } else {
+            content = loadSourceContent(match.source, null);
+            fileCache.set(match.source.id, content);
+          }
         }
-        if (cachedContent === null) {
-          cachedContent = loadSourceContent(match.source, null);
-        }
-        const node = buildNode(match, cachedContent, {
+        const node = buildNode(match, content, {
           beforeTokens: before,
           afterTokens: after,
           clipChars: opts.clipChars,
@@ -425,14 +459,28 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
     parseInt(process.env.MDG_RG_CONCURRENCY ?? "4", 10) || 4,
   );
   const allNodes: Node[] = [];
+  // Track which file paths we've already attributed a node to so a
+  // bulk source can't blot out the explicit files alongside it under
+  // a tight maxNodes cap.
+  const dedupKey = new Set<string>();
   for (let i = 0; i < resolved.length; i += RG_CONCURRENCY) {
     if (allNodes.length >= maxNodes) break;
     const batch = resolved.slice(i, i + RG_CONCURRENCY);
-    // Each worker gets the remaining budget so a single source can't
-    // monopolize. Conservative upper bound; we re-truncate after merge.
-    const perWorkerBudget = maxNodes;
-    const results = await Promise.all(batch.map((rs) => scanSource(rs, perWorkerBudget)));
-    // Merge in input order to preserve determinism across runs.
+    // Per-worker budget. For file/cmd/url/stdin sources we cap at
+    // maxNodes (one source can't legally produce more than the global
+    // cap). For bulk sources we let the worker over-collect — a bulk
+    // walk can produce matches from many files, and we want the
+    // orchestrator's round-robin interleave to do the fair-share
+    // distribution rather than rg's walk order silently picking
+    // winners. The 4x spread is enough to cover ~4 files at the cap
+    // before we have to worry about real memory pressure.
+    const results = await Promise.all(batch.map((rs) => {
+      const budget = rs.source.type === "bulk" ? maxNodes * 4 : maxNodes;
+      return scanSource(rs, budget);
+    }));
+    // Merge in input order, deduping by (file, match_line) so that a
+    // bulk source that re-walks a file already covered by an explicit
+    // file spec doesn't double-count.
     for (let j = 0; j < batch.length; j++) {
       const { nodes: workerNodes, error } = results[j];
       if (error) {
@@ -440,9 +488,45 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
       }
       for (const n of workerNodes) {
         if (allNodes.length >= maxNodes) break;
+        const k = `${n.source.id}:${n.match_line}`;
+        if (dedupKey.has(k)) continue;
+        dedupKey.add(k);
         allNodes.push(n);
       }
       if (allNodes.length >= maxNodes) break;
+    }
+  }
+  // Interleave round-robin so when a tight maxNodes cap is in play,
+  // every distinct source contributes before any one source repeats.
+  // This preserves the test-23-style semantic where listing a dir +
+  // an explicit file should surface both in sources_count even at
+  // very tight caps. We compute the round-robin AFTER the in-order
+  // merge so the natural file-order is preserved when budget allows.
+  if (allNodes.length > 0 && allNodes.length < maxNodes * 2) {
+    const bySource = new Map<string, Node[]>();
+    for (const n of allNodes) {
+      const id = n.source.id;
+      let arr = bySource.get(id);
+      if (!arr) { arr = []; bySource.set(id, arr); }
+      arr.push(n);
+    }
+    if (bySource.size > 1) {
+      const interleaved: Node[] = [];
+      const buckets = [...bySource.values()];
+      let still = true;
+      let idx = 0;
+      while (still && interleaved.length < allNodes.length) {
+        still = false;
+        for (const b of buckets) {
+          if (idx < b.length) {
+            interleaved.push(b[idx]);
+            still = true;
+          }
+        }
+        idx++;
+      }
+      allNodes.length = 0;
+      for (const n of interleaved) allNodes.push(n);
     }
   }
 

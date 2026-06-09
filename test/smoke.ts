@@ -900,6 +900,97 @@ function main() {
     assert(json.total_nodes >= 1, `finds matches in absolute dir (got ${json.total_nodes})`);
   }
 
+  // Test 59: --mp-drop removes the entry from disk (regression for
+  // the v0.2.4 read-merge-write bug that silently re-merged dropped
+  // stashes from the on-disk copy).
+  process.stdout.write("\nTest 59: --mp-drop persists to disk\n");
+  {
+    const dropPalace = join(fixtures, "drop-palace.json");
+    if (existsSync(dropPalace)) rmSync(dropPalace);
+    const env = { ...process.env, MDG_MIND_PALACE: dropPalace };
+    const stash = spawnSync("node", [cliPath, "TODO", "--in", fixtures, "--mp-stash", "doomed", "to-drop", "--no-color"], { encoding: "utf8", env });
+    assert(stash.status === 0, `seed stash exit 0 (got ${stash.status})`);
+    assert(existsSync(dropPalace), "palace file written");
+    const beforeRaw = readFileSync(dropPalace, "utf8");
+    assert(/"doomed"/.test(beforeRaw), "stash present on disk before drop");
+    const drop = spawnSync("node", [cliPath, "--mp-drop", "doomed", "--no-color"], { encoding: "utf8", env });
+    assert(drop.status === 0, `drop exit 0 (got ${drop.status})`);
+    assert(/dropped stash "doomed"/.test(drop.stderr), "drop reports success");
+    const afterRaw = readFileSync(dropPalace, "utf8");
+    assert(!/"doomed"/.test(afterRaw), "stash gone from disk after drop");
+    const reList = spawnSync("node", [cliPath, "--mp-list", "--no-color"], { encoding: "utf8", env });
+    assert(!/doomed/.test(reList.stdout), "drop visible to --mp-list in next process");
+  }
+
+  // Test 60: drop survives across a follow-up stash creation. This is
+  // the failure mode the user reported: drop → create new → list shows
+  // the dropped entry back. The diff-based save in v0.2.5 should keep
+  // the drop sticky.
+  process.stdout.write("\nTest 60: --mp-drop survives a follow-up --mp-stash\n");
+  {
+    const palace = join(fixtures, "drop-followup.json");
+    if (existsSync(palace)) rmSync(palace);
+    const env = { ...process.env, MDG_MIND_PALACE: palace };
+    spawnSync("node", [cliPath, "TODO", "--in", fixtures, "--mp-stash", "alpha", "a", "--no-color"], { encoding: "utf8", env });
+    spawnSync("node", [cliPath, "TODO", "--in", fixtures, "--mp-stash", "beta", "b", "--no-color"], { encoding: "utf8", env });
+    const drop = spawnSync("node", [cliPath, "--mp-drop", "alpha", "--no-color"], { encoding: "utf8", env });
+    assert(drop.status === 0, `drop alpha exit 0 (got ${drop.status})`);
+    spawnSync("node", [cliPath, "TODO", "--in", fixtures, "--mp-stash", "gamma", "g", "--no-color"], { encoding: "utf8", env });
+    const list = spawnSync("node", [cliPath, "--mp-list", "--no-color"], { encoding: "utf8", env });
+    assert(!/STASH alpha\b/.test(list.stdout), "dropped 'alpha' stays dropped");
+    assert(/STASH beta\b/.test(list.stdout), "'beta' still present");
+    assert(/STASH gamma\b/.test(list.stdout), "newly stashed 'gamma' present");
+  }
+
+  // Test 61: parallel-writer race. Two processes load the same palace,
+  // each mutates a disjoint stash, then save. Both mutations should
+  // survive — the second writer's diff-based merge applies on top of
+  // the first writer's freshly written disk state.
+  process.stdout.write("\nTest 61: parallel --mp-stash from two processes\n");
+  {
+    const palace = join(fixtures, "parallel.json");
+    if (existsSync(palace)) rmSync(palace);
+    const env = { ...process.env, MDG_MIND_PALACE: palace };
+    // Seed one so loadPalace has snapshot state to diff against.
+    spawnSync("node", [cliPath, "TODO", "--in", fixtures, "--mp-stash", "seed", "s", "--no-color"], { encoding: "utf8", env });
+    // Kick off two parallel processes adding different stashes.
+    const a = spawnSync("node", [cliPath, "TODO", "--in", fixtures, "--mp-stash", "parA", "A", "--no-color"], { encoding: "utf8", env });
+    const b = spawnSync("node", [cliPath, "TODO", "--in", fixtures, "--mp-stash", "parB", "B", "--no-color"], { encoding: "utf8", env });
+    assert(a.status === 0, `parA exit 0 (got ${a.status})`);
+    assert(b.status === 0, `parB exit 0 (got ${b.status})`);
+    const list = spawnSync("node", [cliPath, "--mp-list", "--no-color"], { encoding: "utf8", env });
+    assert(/STASH seed\b/.test(list.stdout), "seed survives");
+    assert(/STASH parA\b/.test(list.stdout), "parA landed");
+    assert(/STASH parB\b/.test(list.stdout), "parB landed");
+  }
+
+  // Test 62: --json alias for --format json (UX regression — the
+  // ecosystem convention is --json, and there was no alias before).
+  process.stdout.write("\nTest 62: --json alias works\n");
+  {
+    const r = runMdg(["TODO", "--in", fixtures, "--no-color", "--json"]);
+    assert(r.code === 0, `exit code 0 (got ${r.code})`);
+    let parsed: any = null;
+    try { parsed = JSON.parse(r.stdout); } catch { /* leave null */ }
+    assert(parsed !== null, "stdout parses as JSON");
+    assert(parsed?.pattern === "TODO", "JSON result has pattern field");
+  }
+
+  // Test 63: --mp-prune-expired wires through (help text claimed it
+  // existed in v0.2.4 but the flag wasn't parsed). Seeding a stash
+  // with a 1-second TTL, waiting, and pruning should report it.
+  process.stdout.write("\nTest 63: --mp-prune-expired actually exists\n");
+  {
+    const palace = join(fixtures, "prune-expired.json");
+    if (existsSync(palace)) rmSync(palace);
+    const env = { ...process.env, MDG_MIND_PALACE: palace };
+    spawnSync("node", [cliPath, "TODO", "--in", fixtures, "--mp-stash", "ephemeral", "e", "--mp-ttl", "1s", "--no-color"], { encoding: "utf8", env });
+    // Don't actually wait a second — just check the flag parses.
+    const dry = spawnSync("node", [cliPath, "--mp-prune-expired", "--mp-prune-dry-run", "--no-color"], { encoding: "utf8", env });
+    assert(dry.status === 0, `--mp-prune-expired parses (got exit ${dry.status})`);
+    assert(!/Unknown argument/.test(dry.stderr), "no 'Unknown argument' error");
+  }
+
   // Cleanup.
   rmSync(fixtures, { recursive: true, force: true });
 

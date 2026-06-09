@@ -37,7 +37,7 @@ import {
   captureCommand,
   getStdin,
   captureUrl,
-  resolvePathSpecs,
+  classifyPathSpecs,
   type ResolvedSource,
 } from "./sources.js";
 import { parseArgs, resolveConfig, HelpRequestedError, VersionRequestedError } from "./cli.js";
@@ -46,7 +46,7 @@ import { buildFuzzyRegex, verifyFuzzy } from "./fuzzy.js";
 import type { Node, ResolvedConfig, Result, Source } from "./types.js";
 import type { Stash } from "./mind-palace.js";
 
-const VERSION = "0.2.4";
+const VERSION = "0.2.5";
 
 // Fuzzy matching is now in ./fuzzy.ts (trigram-union regex + Levenshtein
 // post-filter; handles drop/insert/substitute/swap up to edit distance 2).
@@ -129,6 +129,14 @@ async function main(): Promise<number> {
   if (config.mind_palace?.prune_all) {
     const r = pruneAll(palace, config.mind_palace.prune_confirm ?? false, config.mind_palace.prune_dry_run ?? false);
     if (!r.dry_run) savePalace(palacePath, palace);
+    process.stdout.write(formatPruneResult(r));
+    return 0;
+  }
+  // Explicit `--mp-prune-expired` reports what it did. The implicit
+  // auto-prune below still runs on every mp-list/etc, but silently.
+  if (config.mind_palace?.prune_expired) {
+    const r = pruneExpired(palace, config.mind_palace.prune_dry_run ?? false);
+    if (!r.dry_run && r.removed > 0) savePalace(palacePath, palace);
     process.stdout.write(formatPruneResult(r));
     return 0;
   }
@@ -293,11 +301,13 @@ async function main(): Promise<number> {
   const t0 = Date.now();
   const allNodes: Node[] = [];
   const sourcesSeen = new Set<string>();
-  // Per-line dedup when auto-tune fires. On wide-record corpora,
-  // multiple matches within one line would otherwise emit one node per
-  // match, each carrying the full (huge) line as match_text. We keep
-  // the first node per (source, line) and drop duplicates.
-  const seenLines = autoTuneApplied ? new Set<string>() : null;
+  // Per-line dedup. rg emits one match record per submatch, so two
+  // matches on one line become two `Match` objects with identical
+  // (source.id, line). We always dedup on that pair so each line
+  // contributes at most one node — regardless of whether the line
+  // came from an explicit file source or from a bulk dir spec that
+  // re-walked the same file.
+  const seenLines = new Set<string>();
 
   // Per-source content cache. Without this a 1000-match file becomes
   // 1000 readFileSync calls of the same content.
@@ -327,11 +337,9 @@ async function main(): Promise<number> {
           // Post-filter trigram-union candidates against the original pattern.
           if (!verifyFuzzy(match.text, match.match_start, config.pattern!, 2)) continue;
         }
-        if (seenLines) {
-          const key = `${match.source.id}:${match.line}`;
-          if (seenLines.has(key)) continue;
-          seenLines.add(key);
-        }
+        const lineKey = `${match.source.id}:${match.line}`;
+        if (seenLines.has(lineKey)) continue;
+        seenLines.add(lineKey);
         const content = getContent(match.source.id, match.source, rs.content);
         const node = buildNode(match, content, {
           beforeTokens,
@@ -339,7 +347,7 @@ async function main(): Promise<number> {
           clipChars: config.clip_chars,
         });
         allNodes.push(node);
-        sourcesSeen.add(rs.source.id);
+        sourcesSeen.add(match.source.id);
         if (allNodes.length >= config.max_nodes) break;
       }
     } catch (err) {
@@ -535,10 +543,19 @@ async function resolveInputs(
   const pathInputs = inputs.filter((i): i is { type: "path"; path: string } => i.type === "path");
   if (pathInputs.length > 0) {
     const specs = pathInputs.map((p) => p.path);
-    const files = await resolvePathSpecs(specs, stdinContent);
+    // Path-spec passthrough: dirs/globs go to rg as-is (one walk, in
+    // parallel, in native code) instead of being pre-expanded to per-
+    // file fan-out from Node.
+    const { files, bulk } = await classifyPathSpecs(specs, stdinContent);
     for (const f of files) {
       out.push({
         source: { id: f, type: "file" },
+        content: null,
+      });
+    }
+    for (const b of bulk) {
+      out.push({
+        source: { id: b, type: "bulk" },
         content: null,
       });
     }

@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.2.5
+
+Perf pass driven by a benchmark that revealed `mdg "import" --in .
+--effort scan` was timing out at 30s. Also fixes three field-reported
+correctness bugs from in-the-wild use, including a data-loss-shaped
+`--mp-drop` issue that resurrected dropped stashes whenever a
+follow-up writer touched the palace.
+
+### Perf
+
+| workload | v0.2.4 | v0.2.5 | speedup |
+| :--- | ---: | ---: | ---: |
+| `--ls` / noop | 58 ms | 61 ms | — |
+| single file | 74 ms | 78 ms | — |
+| `--in src/` (15 files) | 85 ms | 81 ms | 1.05× |
+| repo root (mixed) | 616 ms | 83 ms | **7×** |
+| repo root, `effort: scan` | **30 s (timeout)** | 89 ms | **>300×** |
+
+(`bench/perf/run.ts`, 5-run median per workload. Baselines pinned in
+`bench/results/perf-baseline-v0.2.4.json` and `perf-v0.2.5.json`.)
+
+The cause: every path spec was pre-expanded to a flat list of files in
+Node, then each file got its own `rg` subprocess. On a directory with
+hundreds of files (`.` in a real repo) that meant hundreds of process
+spawns, bypassing rg's own parallel ignore-aware directory walk. The
+fix routes dirs and untyped specs straight to rg as path args and lets
+rg do what it does best. Explicit file paths still go through the
+per-file path so the per-file content cache stays hot.
+
+### Bug fixes
+
+- **`--mp-drop` was a silent no-op when a follow-up writer touched the
+  palace.** v0.2.4's read-merge-write logic merged on-disk stashes
+  back into the in-memory copy whenever they were "missing" — but a
+  dropped stash is, by definition, missing in memory. The result: drop
+  reported success, but the next save (from any other writer) would
+  resurrect the dropped entry from disk. Replaced with a snapshot-based
+  diff: `loadPalace` records the loaded state, `savePalace` computes
+  the diff this process made (added X / modified Y / removed Z) and
+  replays it on top of whatever's actually on disk at save time. The
+  diff includes explicit drops, so they stay dropped.
+- **`--json` now works as an alias for `--format json`.** Matches the
+  ecosystem convention (`rg --json`, `gh --json`, `jq --json`).
+- **`--mp-prune-expired` is now wired through.** The flag was
+  documented in `--help` but never parsed in v0.2.4 — calling it
+  returned `Unknown argument`. Now does what the help text said it did.
+
+### Internals
+
+- `seenLines` per-source dedup is now always-on (was only enabled
+  when auto-tune fired). Two TODOs on one line — rg's submatch
+  emission — no longer become two separate nodes with identical
+  `(source.id, match_line)`.
+- New `bench/perf` harness for measuring CLI wall-clock on
+  representative workloads. Run with `npm run bench:perf`.
+- 5 new regression tests in `test/smoke.ts` cover the `--mp-drop`
+  fix, the parallel-writer scenario, `--json`, and `--mp-prune-expired`.
+
+### Compatibility
+
+No breaking changes. The on-disk palace format is unchanged. The
+diff-based save reads palaces written by 0.2.4 and earlier as-is.
+
 ## 0.2.4
 
 Robustness pass driven by an external code review focused on
