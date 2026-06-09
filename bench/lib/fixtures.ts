@@ -19,7 +19,7 @@ export interface Fixture {
 }
 
 export interface GroundTruth {
-  /** Pattern fed to mdg --pattern. */
+  /** Pattern fed to mpg --pattern. */
   pattern: string;
   /** Effort presets to evaluate on this query. */
   efforts: Array<"quick" | "normal" | "deep">;
@@ -171,7 +171,7 @@ export const GROUND_TRUTH: GroundTruth[] = [
 ];
 
 export function makeCorpus(): string {
-  const root = mkdtempSync(join(tmpdir(), "mdg-bench-corpus-"));
+  const root = mkdtempSync(join(tmpdir(), "mpg-bench-corpus-"));
   for (const f of FIXTURES) {
     const abs = join(root, f.path);
     mkdirSync(join(abs, ".."), { recursive: true });

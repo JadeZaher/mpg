@@ -9,7 +9,7 @@
  * Success is checked by substring match against the agent's final answer:
  * the model must produce text containing the expected_phrases.
  *
- * This is the workload where mdg's pitch matters: small node budgets +
+ * This is the workload where mpg's pitch matters: small node budgets +
  * pagination + stashing give the agent finer-grained context than
  * read-whole-file-then-grep. On JSONL corpora rg wins; on code+specs,
  * agent-task-lift is what we measure.
@@ -48,7 +48,7 @@ export const TASKS: TaskSpec[] = [
       ["Model"],
       ["BrowserInteraction"],
     ],
-    rationale: "Single-track spec lookup. Treatment should mdg_search the track dir and read a small node; control reads spec.md.",
+    rationale: "Single-track spec lookup. Treatment should mpg_search the track dir and read a small node; control reads spec.md.",
   },
   {
     id: "T2-blake3-asset",
@@ -66,7 +66,7 @@ export const TASKS: TaskSpec[] = [
       "In the FractalEngine repo at " + FRACTAL_ROOT + ", what Rust function loads an asset into Bevy by asset_id? " +
       "Give just the function name.",
     expected_phrases: [["load_to_bevy"]],
-    rationale: "Function-name lookup. Treatment uses mdg_search with effort:quick and max_nodes:3.",
+    rationale: "Function-name lookup. Treatment uses mpg_search with effort:quick and max_nodes:3.",
   },
   {
     id: "T4-camera-type",
@@ -101,7 +101,7 @@ export const TASKS: TaskSpec[] = [
         "code_review_20260430_performance_hotpaths",
       ],
     ],
-    rationale: "Directory listing task. Treatment's bash/ls overlap; mdg_search on directory names can also surface them. Tests at-least-N matches by requiring 2 different OR-groups (the model must mention 2 names).",
+    rationale: "Directory listing task. Treatment's bash/ls overlap; mpg_search on directory names can also surface them. Tests at-least-N matches by requiring 2 different OR-groups (the model must mention 2 names).",
   },
 ];
 

@@ -2,17 +2,17 @@
 
 ## What this measures
 
-The honest test of mdg as a memory-system primitive is **not** "can it
+The honest test of mpg as a memory-system primitive is **not** "can it
 find a literal pattern" — rg wins that. It's:
 
-> Given a large memory corpus and a target token budget, can mdg
+> Given a large memory corpus and a target token budget, can mpg
 > assemble a compaction that lets a downstream LLM answer questions
 > the original corpus could answer?
 
 This is the workflow behind every real use case:
 
 - **Context-window trimming**: when an agent's context approaches its
-  limit, mdg picks what to keep so the remaining context still answers
+  limit, mpg picks what to keep so the remaining context still answers
   the agent's needs.
 - **Memory compaction**: turn 50k tokens of session history into 5k
   tokens that preserve the load-bearing facts.
@@ -58,8 +58,8 @@ For each row in `tasks.ts`:
 
 - **control**: read / grep / write / bash only. The agent has to grep
   for the topic, read promising files, and stitch a compaction by hand.
-- **treatment**: control tools + 5 mdg tools. The agent can use
-  `mdg_search` with `effort: scan` + `sort: recent` for the index, then
+- **treatment**: control tools + 5 mpg tools. The agent can use
+  `mpg_search` with `effort: scan` + `sort: recent` for the index, then
   drill into chosen files with `quick`/`normal`/`deep`, stash partial
   findings, and compose them.
 
@@ -74,7 +74,7 @@ For each row in `tasks.ts`:
 | **density** (answer_quality / compaction_size) | Answer-quality per token preserved. |
 
 Treatment **wins** if it achieves equal-or-better `answer_quality` at
-equal-or-lower input tokens than control. That's the moment mdg's
+equal-or-lower input tokens than control. That's the moment mpg's
 design is empirically justified as a memory-system primitive.
 
 ## What's NOT included on first pass

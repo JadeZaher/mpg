@@ -1,4 +1,4 @@
-// Run with: MDG_BENCH_PROVIDER=openrouter npx tsx bench/macro/agent/_smoke.ts
+// Run with: MPG_BENCH_PROVIDER=openrouter npx tsx bench/macro/agent/_smoke.ts
 // Smoke test: one-turn agent call via OpenRouter + DeepSeek.
 
 import { runAgent } from "./index.js";

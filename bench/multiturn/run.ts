@@ -3,7 +3,7 @@
  *
  * Multi-turn memory benchmark driver.
  *
- * Measures whether mdg's mind-palace stashing pays off ACROSS TURNS.
+ * Measures whether mpg's mind-palace stashing pays off ACROSS TURNS.
  * The macro bench measures single-turn lift; this bench measures:
  *   "given a multi-step task where the agent must remember earlier findings,
  *    does stashing in turn N produce a real benefit in turn N+k?"
@@ -12,12 +12,12 @@
  *   All turns of a scenario are concatenated into a single big prompt as
  *   labelled questions (Q1 / Q2 / Q3 / Q4) and the agent is asked to produce
  *   correspondingly labelled answers (A1 / A2 / A3 / A4).  This lets the
- *   treatment arm stash early findings in mdg and retrieve them when answering
+ *   treatment arm stash early findings in mpg and retrieve them when answering
  *   later questions, while the control arm must re-search from scratch.
  *
  * Arms:
- *   control   — read / grep / write / bash.  No mdg.
- *   treatment — same tools + 5 mdg tools (search / stash / list / get / drop).
+ *   control   — read / grep / write / bash.  No mpg.
+ *   treatment — same tools + 5 mpg tools (search / stash / list / get / drop).
  *               System prompt explicitly encourages stashing early answers.
  *
  * Scoring:
@@ -149,7 +149,7 @@ async function runOne(
     const palacePath =
       arm === "treatment"
         ? join(
-            mkdtempSync(join(tmpdir(), `mdg-mt-${scenario.id}-`)),
+            mkdtempSync(join(tmpdir(), `mpg-mt-${scenario.id}-`)),
             "palace.json",
           )
         : undefined;
@@ -304,7 +304,7 @@ async function main(): Promise<void> {
   }
 
   // Empty string -> let runAgent pick the default for the active provider.
-  const modelId = process.env["MDG_BENCH_MODEL"] ?? "";
+  const modelId = process.env["MPG_BENCH_MODEL"] ?? "";
 
   process.stdout.write(
     `\nMulti-turn bench — ${SCENARIOS.length} scenarios × 2 arms = ${SCENARIOS.length * 2} runs\n`,

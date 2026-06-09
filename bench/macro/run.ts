@@ -5,7 +5,7 @@
  * scores the agent's final answer against expected_phrases, and emits
  * a result JSON under bench/results/macro-<ISO>.json.
  *
- * Treatment arm: agent has read/grep/write/bash + 5 mdg tools.
+ * Treatment arm: agent has read/grep/write/bash + 5 mpg tools.
  * Control arm:   agent has read/grep/write/bash only.
  *
  * The agent harness is in bench/macro/agent (Worker 1's owned module).
@@ -59,7 +59,7 @@ async function runOne(task: TaskSpec, arm: "control" | "treatment"): Promise<Cel
   try {
     // Per-task isolated palace for treatment arm.
     const palacePath = arm === "treatment"
-      ? join(mkdtempSync(join(tmpdir(), `mdg-macro-${task.id}-`)), "palace.json")
+      ? join(mkdtempSync(join(tmpdir(), `mpg-macro-${task.id}-`)), "palace.json")
       : undefined;
 
     // Dynamic import so the driver compiles before W1 has finished.
@@ -74,8 +74,8 @@ async function runOne(task: TaskSpec, arm: "control" | "treatment"): Promise<Cel
       maxInputTokens: 50_000,
       // Let runAgent pick the default for the active provider
       // (deepseek/deepseek-v4-pro for openrouter, haiku for anthropic).
-      // Only override with MDG_BENCH_MODEL if explicitly set.
-      modelId: process.env.MDG_BENCH_MODEL,
+      // Only override with MPG_BENCH_MODEL if explicitly set.
+      modelId: process.env.MPG_BENCH_MODEL,
       palacePath,
       cwd: FRACTAL_ROOT,
       interTurnDelayMs: 500,
@@ -164,8 +164,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  const explicitModel = process.env.MDG_BENCH_MODEL;
-  const provider = (process.env.MDG_BENCH_PROVIDER ?? "anthropic").toLowerCase();
+  const explicitModel = process.env.MPG_BENCH_MODEL;
+  const provider = (process.env.MPG_BENCH_PROVIDER ?? "anthropic").toLowerCase();
   const displayModel =
     explicitModel ?? (provider === "openrouter" ? "deepseek/deepseek-v4-pro (OpenRouter default)" : "claude-haiku-4-5-20251001 (Anthropic default)");
   process.stdout.write(`\nMacro bench — ${TASKS.length} tasks × 2 arms = ${TASKS.length * 2} runs\n`);

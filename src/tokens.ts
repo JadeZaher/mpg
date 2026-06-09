@@ -10,7 +10,7 @@
  * can plug in tiktoken or gpt-tokenizer at the integration boundary.
  *
  * The heuristic is good enough to make *budgeting* decisions (sizing
- * context windows, capping output) which is what mdg is for. It's not
+ * context windows, capping output) which is what mpg is for. It's not
  * a substitute for a real tokenizer when billing accuracy matters.
  */
 

@@ -1,12 +1,12 @@
 /**
- * mdg-scan arm — no-LLM mdg path.
+ * mpg-scan arm — no-LLM mpg path.
  *
- * One mdg CLI call per retrieval_keyword (OR'd into a single regex),
+ * One mpg CLI call per retrieval_keyword (OR'd into a single regex),
  * using effort=scan + sort=recent + window-curve=log + --max-tokens
  * capped at the budget. The compaction is the formatted text output.
  *
  * This is what an agent COULD do with one tool call before even
- * thinking. Tests whether mdg's "given a topic, return the right
+ * thinking. Tests whether mpg's "given a topic, return the right
  * nodes in budget" is itself a useful compaction primitive.
  */
 
@@ -26,7 +26,7 @@ export interface ArmResult {
   ms: number;
 }
 
-export async function runMdgScan(task: CompactionTask, corpusRoot: string): Promise<ArmResult> {
+export async function runMpgScan(task: CompactionTask, corpusRoot: string): Promise<ArmResult> {
   const t0 = Date.now();
   // OR the topic keywords into one regex.
   const pattern = task.retrieval_keywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
@@ -47,7 +47,7 @@ export async function runMdgScan(task: CompactionTask, corpusRoot: string): Prom
   );
   const compaction = r.stdout ?? "";
   return {
-    arm: "mdg-scan",
+    arm: "mpg-scan",
     compaction,
     compaction_tokens: approxTokens(compaction),
     input_tokens: 0,

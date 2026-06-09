@@ -1,6 +1,6 @@
 # Mind Palace — full surface
 
-The palace is a JSON file (default `./.mdg/mind-palace.json`) holding
+The palace is a JSON file (default `./.mpg/mind-palace.json`) holding
 named **stashes** of search results. Stashes are addressable: future
 searches can use them as inputs, compose them, intersect them, link
 them into a graph, and prune them by age/tag/count.
@@ -52,22 +52,22 @@ Examples:
 
 ```bash
 # Re-search a single stash's files
-mdg "rate.limit" --mp-from auth-todos
+mpg "rate.limit" --mp-from auth-todos
 
 # Files mentioned in any of two stashes
-mdg "TODO" --mp-compose auth-todos perf-hotspots
+mpg "TODO" --mp-compose auth-todos perf-hotspots
 
 # Files mentioned in BOTH stashes
-mdg "TODO" --mp-intersect auth-todos perf-hotspots
+mpg "TODO" --mp-intersect auth-todos perf-hotspots
 
 # Files in auth-todos but NOT in deprecated
-mdg "TODO" --mp-except deprecated
+mpg "TODO" --mp-except deprecated
 ```
 
 The MCP tools today expose `from` and `compose` only — drop to CLI for
 `intersect` and `except`.
 
-## Relationships (the graph in markdowngraphcli)
+## Relationships (the graph in mind-palace-graph)
 
 Stashes can be linked into a directed graph. The graph is what lets
 you **traverse the investigation by intent** instead of by remembering
@@ -108,19 +108,19 @@ then traverse by intent in future sessions.
 
 ```bash
 # Session 1 — building the topology
-mdg "JWT" --in src/auth/   --mp-stash auth-jwt    --mp-tag rewrite --mp-ttl 24h
-mdg "JWT" --in docs/spec/  --mp-stash spec-jwt    --mp-tag rewrite --mp-ttl 24h
-mdg "JWT" --in src/legacy/ --mp-stash legacy-jwt  --mp-tag rewrite --mp-ttl 24h
+mpg "JWT" --in src/auth/   --mp-stash auth-jwt    --mp-tag rewrite --mp-ttl 24h
+mpg "JWT" --in docs/spec/  --mp-stash spec-jwt    --mp-tag rewrite --mp-ttl 24h
+mpg "JWT" --in src/legacy/ --mp-stash legacy-jwt  --mp-tag rewrite --mp-ttl 24h
 
-mdg --mp-link auth-jwt spec-jwt   see-also   "implementation of the spec"
-mdg --mp-link auth-jwt legacy-jwt supersedes "post-rewrite, legacy goes away"
+mpg --mp-link auth-jwt spec-jwt   see-also   "implementation of the spec"
+mpg --mp-link auth-jwt legacy-jwt supersedes "post-rewrite, legacy goes away"
 
 # Session 2 — navigation, no need to remember names
-mdg --mp-related auth-jwt   # one-hop neighbors with edge labels
-mdg --mp-graph auth-jwt 3   # full BFS, three hops out
+mpg --mp-related auth-jwt   # one-hop neighbors with edge labels
+mpg --mp-graph auth-jwt 3   # full BFS, three hops out
 
 # When the conversation gets compacted and you've lost the thread:
-mdg --mp-graph <known-root> 3
+mpg --mp-graph <known-root> 3
 # → reconstructs the whole investigation topology, with edge types
 #   that tell you what's current, what's superseded, what blocks what.
 ```
@@ -135,7 +135,7 @@ mdg --mp-graph <known-root> 3
    notice the relationship. Three sessions later you won't remember
    why two stashes mattered together.
 3. **Don't link across unrelated tasks.** If you maintain one palace
-   per task (`MDG_MIND_PALACE=.mdg/<task>.json`), this is automatic —
+   per task (`MPG_MIND_PALACE=.mpg/<task>.json`), this is automatic —
    cross-task links can't even be expressed.
 4. **Relink with confidence — it's atomic.** `--mp-unlink` then
    `--mp-link` is a no-op-loss operation; the diff-based save in
@@ -166,8 +166,8 @@ A palace grows unbounded unless pruned. Always preview first.
 | `--mp-prune-dry-run` | Preview only — do not delete. **Use this first.** |
 
 ```bash
-mdg --mp-prune-older-than 7d --mp-prune-dry-run    # preview
-mdg --mp-prune-older-than 7d                       # commit
+mpg --mp-prune-older-than 7d --mp-prune-dry-run    # preview
+mpg --mp-prune-older-than 7d                       # commit
 ```
 
 TTL-tagged stashes are *also* auto-reaped on every `--mp-list` or
@@ -179,15 +179,15 @@ Use a separate palace per task to avoid context bleed.
 
 ```bash
 # Explicit per-invocation:
-mdg "TODO" --in src/ --mp-stash t42 "..." --mp-path .mdg/task-42.json
+mpg "TODO" --in src/ --mp-stash t42 "..." --mp-path .mpg/task-42.json
 
 # Or via env, so all subsequent calls use the same palace:
-export MDG_MIND_PALACE=.mdg/task-42.json
-mdg "TODO" --in src/ --mp-stash t42 "..."
-mdg --mp-list
+export MPG_MIND_PALACE=.mpg/task-42.json
+mpg "TODO" --in src/ --mp-stash t42 "..."
+mpg --mp-list
 ```
 
-The default `./.mdg/mind-palace.json` is searched walking up from CWD
+The default `./.mpg/mind-palace.json` is searched walking up from CWD
 (like `.gitignore`), so monorepo subdirs share a project palace by
 default.
 

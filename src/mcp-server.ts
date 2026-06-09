@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Minimal MCP server for mdg.
+ * Minimal MCP server for mpg.
  *
- * Exposes mdg as an MCP-compatible tool server. Drop this into
+ * Exposes mpg as an MCP-compatible tool server. Drop this into
  * Claude Desktop, Cline, Windsurf, or any MCP client.
  *
- * Tools: mdg_search, mdg_stash, mdg_list_stashes, mdg_get_stash,
- *        mdg_drop_stash, mdg_discover (--ls)
+ * Tools: mpg_search, mpg_stash, mpg_list_stashes, mpg_get_stash,
+ *        mpg_drop_stash, mpg_discover (--ls)
  *
  * Usage:
  *   node mcp-server.js
@@ -15,7 +15,7 @@
  *
  * Configuration (Claude Desktop mcp.json):
  *   {
- *     "mdg": {
+ *     "mpg": {
  *       "command": "node",
  *       "args": ["path/to/mcp-server.js"]
  *     }
@@ -43,7 +43,7 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-const log = (...args: unknown[]) => process.stderr.write(`[mdg-mcp] ${args.join(" ")}\n`);
+const log = (...args: unknown[]) => process.stderr.write(`[mpg-mcp] ${args.join(" ")}\n`);
 
 async function handleRequest(req: JsonRpcRequest): Promise<JsonRpcResponse> {
   switch (req.method) {
@@ -54,7 +54,7 @@ async function handleRequest(req: JsonRpcRequest): Promise<JsonRpcResponse> {
         result: {
           protocolVersion: "2024-11-05",
           capabilities: { tools: {} },
-          serverInfo: { name: "mdg", version: "0.2.0" },
+          serverInfo: { name: "mpg", version: "0.3.0" },
         },
       };
 
@@ -98,7 +98,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
   log(`tool call: ${name}`, JSON.stringify(args).slice(0, 200));
 
   switch (name) {
-    case "mdg_search": {
+    case "mpg_search": {
       const result = await search({
         pattern: args.pattern as string,
         in: args.in as string[] | undefined,
@@ -118,9 +118,9 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       return JSON.stringify(result, null, 2);
     }
 
-    case "mdg_stash": {
+    case "mpg_stash": {
       // Run a search and stash the result in one call.
-      if (!args.pattern) throw new Error("mdg_stash requires a pattern to search for.");
+      if (!args.pattern) throw new Error("mpg_stash requires a pattern to search for.");
       const searchResult = await search({
         pattern: args.pattern as string,
         in: args.in as string[] | undefined,
@@ -139,7 +139,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       return JSON.stringify({ search: { total_nodes: searchResult.total_nodes, total_tokens: searchResult.total_tokens }, stash: stashResult }, null, 2);
     }
 
-    case "mdg_list_stashes": {
+    case "mpg_list_stashes": {
       const result = listStashes(
         args.palace_path as string | undefined,
         args.tag_filter as string[] | undefined,
@@ -156,7 +156,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       })), null, 2);
     }
 
-    case "mdg_get_stash": {
+    case "mpg_get_stash": {
       const result = getStash(
         args.name as string,
         args.palace_path as string | undefined,
@@ -178,7 +178,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       return JSON.stringify({ ...result, view: "full" }, null, 2);
     }
 
-    case "mdg_drop_stash": {
+    case "mpg_drop_stash": {
       const ok = dropStash(
         args.name as string,
         args.palace_path as string | undefined,

@@ -3,19 +3,19 @@
  *
  * Pivoted off JSONL conversation transcripts to a "real memory system
  * shape" corpus: markdown specs, JSON metadata, and supporting docs
- * from another project's `conductor/tracks/`. This is what mdg
+ * from another project's `conductor/tracks/`. This is what mpg
  * actually browses when integrated into a memory system (mem0, Letta,
  * Anthropic memory tool, or a bespoke setup).
  *
  * Default corpus: oasis-sleek (34 tracks). Override with
- * MDG_BENCH_CORPUS_ROOT=<other project root>.
+ * MPG_BENCH_CORPUS_ROOT=<other project root>.
  *
  * Pipeline (unchanged from JSONL version):
  *   1. Discover the corpus.
  *   2. For each query:
  *      a. Derive ground-truth (file, line) tuples via literal rg on
  *         the corpus root.
- *      b. Run each substrate (mdg, rg, PowerShell, embed).
+ *      b. Run each substrate (mpg, rg, PowerShell, embed).
  *      c. Score recall / precision / token cost / wall-clock.
  *   3. Aggregate per-substrate means.
  *   4. Write bench/results/conversational-<ts>.json.
@@ -78,7 +78,7 @@ interface SubResult {
   ms: number;
 }
 
-function runMdgSub(corpusRoot: string, pattern: string): SubResult {
+function runMpgSub(corpusRoot: string, pattern: string): SubResult {
   const t0 = Date.now();
   const r = spawnSync(
     "node",
@@ -234,8 +234,8 @@ async function main(): Promise<void> {
       continue;
     }
     process.stdout.write(`  [${q.label}] gt=${gt.size}\n`);
-    const mdgR = runMdgSub(corpusRoot, q.pattern);
-    process.stdout.write(`    mdg done in ${mdgR.ms}ms\n`);
+    const mpgR = runMpgSub(corpusRoot, q.pattern);
+    process.stdout.write(`    mpg done in ${mpgR.ms}ms\n`);
     const rgR  = runRgSub(corpusRoot, q.pattern);
     process.stdout.write(`    rg done in ${rgR.ms}ms\n`);
     const psR  = runPowerShellSub(corpusRoot, q.pattern);
@@ -243,7 +243,7 @@ async function main(): Promise<void> {
     const embR = await runEmbedSub(index, embedDocs, q.prompt, gt.size);
     process.stdout.write(`    embed done in ${embR.ms}ms\n`);
 
-    cells.push(score(gt, mdgR, q.label, "mdg"));
+    cells.push(score(gt, mpgR, q.label, "mpg"));
     cells.push(score(gt, rgR,  q.label, "ripgrep"));
     cells.push(score(gt, psR,  q.label, "powershell"));
     cells.push(score(gt, embR, q.label, "embed"));

@@ -8,11 +8,11 @@
 
 ## What This Bench Measures
 
-The macro bench measures single-turn lift: "does mdg help the agent answer _one_ question more cheaply?"
+The macro bench measures single-turn lift: "does mpg help the agent answer _one_ question more cheaply?"
 
 This bench measures **cross-turn memory lift**: given a multi-step task where the agent must remember earlier findings, does stashing in turn N produce a real benefit in turn N+k?
 
-Hypothesis: when an agent uses `mdg_stash` to persist key facts from an early question, later questions in the same scenario can retrieve those facts via `mdg_get_stash` or a scoped `mdg_search from:"<stash-name>"` — spending far fewer tokens than re-grepping or re-reading files from scratch.
+Hypothesis: when an agent uses `mpg_stash` to persist key facts from an early question, later questions in the same scenario can retrieve those facts via `mpg_get_stash` or a scoped `mpg_search from:"<stash-name>"` — spending far fewer tokens than re-grepping or re-reading files from scratch.
 
 ---
 
@@ -29,7 +29,7 @@ Each scenario contains 3-4 related turns. All turns are combined into a single p
 | Arm | Tools |
 |---|---|
 | control | read, grep, write, bash |
-| treatment | read, grep, write, bash + mdg_search, mdg_stash, mdg_list_stashes, mdg_get_stash, mdg_drop_stash |
+| treatment | read, grep, write, bash + mpg_search, mpg_stash, mpg_list_stashes, mpg_get_stash, mpg_drop_stash |
 
 The treatment arm system prompt includes the **MULTI-TURN STASHING STRATEGY** block that instructs the agent to stash early answers immediately and retrieve them when answering later questions.
 
@@ -107,7 +107,7 @@ A meaningful result is: treatment pass rate higher than control AND input tokens
 npx tsx bench/multiturn/run.ts
 
 # Different model:
-MDG_BENCH_MODEL=claude-sonnet-4-5 npx tsx bench/multiturn/run.ts
+MPG_BENCH_MODEL=claude-sonnet-4-5 npx tsx bench/multiturn/run.ts
 
 # Without API key: writes a skipped record and exits 0.
 npx tsx bench/multiturn/run.ts

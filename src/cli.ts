@@ -3,7 +3,7 @@
  *
  * We hand-roll the parser to avoid a dependency. The grammar is:
  *
- *   mdg [pattern] [options]
+ *   mpg [pattern] [options]
  *
  * Pattern is the first positional argument. Options are flags below.
  * The parser applies effort presets, then CLI overrides, then
@@ -105,10 +105,10 @@ export const EFFORT_PRESETS: Record<Effort, { before: number; after: number; max
   auto:   { before: 500,  after: 500,  maxNodes: 30  },
 };
 
-export const HELP = `mdg — node-centric context retrieval for LLM harnesses
+export const HELP = `mpg — node-centric context retrieval for LLM harnesses
 
 USAGE
-  mdg <pattern> [options]
+  mpg <pattern> [options]
 
   Pattern is a regular expression (ripgrep syntax). Use -F/--fixed-strings
   for literal matching.
@@ -121,7 +121,7 @@ SOURCES (at least one is required unless reading stdin)
                                 @- (read paths from stdin), or a
                                 comma-separated list.
                                 Paths can also be passed as trailing
-                                positionals: mdg "TODO" src/ test/
+                                positionals: mpg "TODO" src/ test/
       --cmd <command>       Search the stdout of a shell command
       --stdin               Read content from stdin (auto-detected when piped)
   -u, --url <url>           Search the body of an HTTP(S) URL
@@ -197,7 +197,7 @@ PAGINATION (for finer-grained traversal of large result sets)
       --all                 Disable pagination; return everything.
 
 MIND PALACE (the LLM's instantiable short-term memory)
-  A mind palace is a JSON file (default ./.mdg/mind-palace.json) that
+  A mind palace is a JSON file (default ./.mpg/mind-palace.json) that
   holds named "stashes" of search results. The LLM harness can stash
   results, recall them, and compose them across multiple invocations.
 
@@ -226,7 +226,7 @@ MIND PALACE (the LLM's instantiable short-term memory)
       --mp-compose <a> <b> ...   Union of multiple stashes' file lists
                                  as the search target.
       --mp-path <file>           Path to the mind-palace.json file
-                                 (default: ./.mdg/mind-palace.json,
+                                 (default: ./.mpg/mind-palace.json,
                                  or the closest one walking up from
                                  CWD). Use this for isolated sessions.
 
@@ -244,7 +244,7 @@ PRUNING & TTL (keep the palace from growing unbounded)
       --mp-prune-dry-run         Show what would be removed.
       --mp-prune-confirm         Required for --mp-prune-all.
 
-RELATIONSHIPS (make the "graph" in markdowngraphcli real)
+RELATIONSHIPS (make the "graph" in mind-palace-graph real)
       --mp-link <from> <to> <type> [note]
                                 Create a directed edge between stashes.
                                 Types: depends-on, related-to, see-also,
@@ -258,67 +258,67 @@ RELATIONSHIPS (make the "graph" in markdowngraphcli real)
 
 EXAMPLES
   # Find TODOs in src/, with 500 tokens of context, up to 20 nodes
-  mdg "TODO" --in src/ --max-nodes 20
+  mpg "TODO" --in src/ --max-nodes 20
 
   # Paginate: 5 nodes per page, start at page 1
-  mdg "TODO" --in src/ --max-nodes 100 --page 1 --page-size 5
+  mpg "TODO" --in src/ --max-nodes 100 --page 1 --page-size 5
 
   # Browse a large stash 5 nodes at a time
-  mdg --mp-get auth-issues --page 2 --page-size 5
+  mpg --mp-get auth-issues --page 2 --page-size 5
 
   # Browse a long list of stashes
-  mdg --mp-list --page 1 --page-size 20
+  mpg --mp-list --page 1 --page-size 20
 
   # Stash this search's results into the mind palace
-  mdg "TODO" --in src/ --mp-stash auth-todos "Auth TODOs to review"
+  mpg "TODO" --in src/ --mp-stash auth-todos "Auth TODOs to review"
 
   # Use a stashed file list as the search target
-  mdg "rate" --mp-from auth-todos
+  mpg "rate" --mp-from auth-todos
 
   # Search across multiple stashes' file lists
-  mdg "error" --mp-compose auth-todos perf-hotspots
+  mpg "error" --mp-compose auth-todos perf-hotspots
 
   # List all stashes
-  mdg --mp-list
+  mpg --mp-list
 
   # Inspect a stash
-  mdg --mp-get auth-todos
+  mpg --mp-get auth-todos
 
   # Free a slot
-  mdg --mp-drop auth-todos
+  mpg --mp-drop auth-todos
 
   # Multiple paths in one flag (greedy)
-  mdg "TODO" --in src/ test/ docs/
+  mpg "TODO" --in src/ test/ docs/
 
   # Trailing positional paths (rg-style)
-  mdg "TODO" src/ test/
+  mpg "TODO" src/ test/
 
   # Read path list from a file
-  mdg "TODO" --in @filelist.txt
+  mpg "TODO" --in @filelist.txt
 
   # Read path list from stdin
-  echo -e "src/\ntest/" | mdg "TODO" --in @-
+  echo -e "src/\ntest/" | mpg "TODO" --in @-
 
   # Comma-separated
-  mdg "TODO" --in src/,test/,docs/
+  mpg "TODO" --in src/,test/,docs/
 
   # Quick recon: narrow context, 5 nodes
-  mdg "auth" --in . --effort quick --max-nodes 5
+  mpg "auth" --in . --effort quick --max-nodes 5
 
   # Deep dive: wide context, capped at 16k tokens
-  mdg "session" --in src/auth/ --effort deep --max-tokens 16000
+  mpg "session" --in src/auth/ --effort deep --max-tokens 16000
 
   # Search the output of a command
-  mdg "error" --cmd "git log --oneline -100"
+  mpg "error" --cmd "git log --oneline -100"
 
   # Pipe content in
-  cat README.md | mdg "install"
+  cat README.md | mpg "install"
 
   # JSON for programmatic harness integration
-  mdg "TODO" --in src/ --format json
+  mpg "TODO" --in src/ --format json
 
   # Markdown for pasting into a doc or chat
-  mdg "TODO" --in src/ --format markdown
+  mpg "TODO" --in src/ --format markdown
 `;
 
 export function parseArgs(argv: string[]): RawArgs {
@@ -599,7 +599,7 @@ export function resolveConfig(raw: RawArgs): ResolvedConfig {
 
   // Pattern is optional: required for searches and for --mp-from /
   // --mp-compose, but not for --mp-list, --mp-get, or --mp-drop.
-  const pattern = raw.pattern ?? process.env.MDG_PATTERN;
+  const pattern = raw.pattern ?? process.env.MPG_PATTERN;
   const needsPattern =
     !raw.ls && (
     raw.inPaths.length > 0 ||
@@ -612,7 +612,7 @@ export function resolveConfig(raw: RawArgs): ResolvedConfig {
     (raw.mpIntersect && raw.mpIntersect.length > 0) ||
     raw.mpStashName !== undefined);
   if (needsPattern && !pattern) {
-    throw new Error("No pattern provided. Pass it as the first positional argument, e.g. `mdg \"TODO\"`.");
+    throw new Error("No pattern provided. Pass it as the first positional argument, e.g. `mpg \"TODO\"`.");
   }
 
   // Apply effort preset, then explicit overrides.

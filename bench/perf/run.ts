@@ -8,7 +8,7 @@
  * the file-system cache) and the remaining N are aggregated.
  *
  *   npm run bench:perf                # uses the locally-built dist/
- *   MDG_BIN=/path/to/other/mdg npm run bench:perf
+ *   MPG_BIN=/path/to/other/mpg npm run bench:perf
  *
  * Prints a table and writes JSON to bench/results/perf-<ISO>.json.
  */
@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolvePath(__dirname, "..", "..");
 const DIST = resolvePath(REPO_ROOT, "dist", "index.js");
-const MDG = process.env.MDG_BIN ?? DIST;
+const MPG = process.env.MPG_BIN ?? DIST;
 const RUNS = parseInt(process.env.RUNS ?? "5", 10);
 
 interface Workload {
@@ -66,7 +66,7 @@ const WORKLOADS: Workload[] = [
 
 function runOnce(workload: Workload): { ms: number; bytes: number; nodes: number | null } {
   const t0 = Date.now();
-  const res = spawnSync(process.execPath, [MDG, ...workload.args], {
+  const res = spawnSync(process.execPath, [MPG, ...workload.args], {
     cwd: REPO_ROOT,
     encoding: "utf8",
     // 30s ceiling — anything longer is a regression worth a crash.
@@ -113,12 +113,12 @@ function fmt(n: number): string {
 }
 
 function main() {
-  if (!existsSync(MDG)) {
-    console.error(`mdg binary not found at ${MDG}`);
+  if (!existsSync(MPG)) {
+    console.error(`mpg binary not found at ${MPG}`);
     process.exit(2);
   }
-  console.log(`mdg perf bench`);
-  console.log(`  binary: ${MDG}`);
+  console.log(`mpg perf bench`);
+  console.log(`  binary: ${MPG}`);
   console.log(`  runs:   ${RUNS} per workload (plus 1 discarded warm-up)`);
   console.log(`  cwd:    ${REPO_ROOT}`);
   console.log("");
@@ -145,7 +145,7 @@ function main() {
     outPath,
     JSON.stringify(
       {
-        binary: MDG,
+        binary: MPG,
         runs_per_workload: RUNS,
         results: results.map((s) => ({
           id: s.workload.id,

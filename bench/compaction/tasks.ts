@@ -25,7 +25,7 @@ export interface CompactionTask {
   label: string;
   /** What the agent is compacting about. Free-form prose. */
   topic: string;
-  /** Hand-picked literal keywords for non-LLM retrieval baselines (rg/mdg-scan/summarization). */
+  /** Hand-picked literal keywords for non-LLM retrieval baselines (rg/mpg-scan/summarization). */
   retrieval_keywords: string[];
   /** Hard cap on the compaction output, in approximate tokens. */
   budget_tokens: number;

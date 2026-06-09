@@ -1,14 +1,14 @@
 /**
  * Shared corpus discovery for the memory-system benchmarks.
  *
- * mdg's pitch is "memory-system-independent retrieval over the kind of
+ * mpg's pitch is "memory-system-independent retrieval over the kind of
  * content a memory system actually stores": markdown notes, JSON
  * metadata, specifications, plans, code snippets. Conductor tracks
  * across user projects are exactly that shape, so we use them as the
  * canonical bench corpus instead of raw conversation transcripts.
  *
  * Default corpus: oasis-sleek (34 tracks; web + blockchain themes).
- * Override via `MDG_BENCH_CORPUS_ROOT=<path>` to point at a different
+ * Override via `MPG_BENCH_CORPUS_ROOT=<path>` to point at a different
  * conductor/tracks parent.
  *
  * macro and multi-turn use FractalEngine via their own constants —
@@ -21,22 +21,22 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Pointing at the project root would cause mdg's `--in` walker (via
+ * Pointing at the project root would cause mpg's `--in` walker (via
  * fs.glob) to descend into node_modules and other build artifacts.
  * Point at the conductor/tracks subdir directly — that's where the
  * memory-system content lives.
  */
 export const DEFAULT_CORPUS_ROOT =
-  process.env.MDG_BENCH_CORPUS_ROOT ??
+  process.env.MPG_BENCH_CORPUS_ROOT ??
   "C:/Users/atooz/Programming/Projects/oasis-sleek/conductor/tracks";
 
 /**
  * Mega-corpus: combined memory from multiple projects. Used by the
- * compaction/trim/scale tiers where we want to see how mdg handles
- * 500+ memory files instead of 70. Set MDG_BENCH_MEGA_CORPUS=1 to
+ * compaction/trim/scale tiers where we want to see how mpg handles
+ * 500+ memory files instead of 70. Set MPG_BENCH_MEGA_CORPUS=1 to
  * use this everywhere; otherwise tiers opt in via env or a flag.
  */
-export const MEGA_CORPUS_ROOTS = (process.env.MDG_BENCH_MEGA_CORPUS_ROOTS ?? [
+export const MEGA_CORPUS_ROOTS = (process.env.MPG_BENCH_MEGA_CORPUS_ROOTS ?? [
   "C:/Users/atooz/Programming/Projects/oasis-sleek/conductor/tracks",
   "C:/Users/atooz/Programming/fractalengine-workspace/fractalengine/conductor/tracks",
   "C:/Users/atooz/Programming/plantcommerce/conductor/tracks",
@@ -63,7 +63,7 @@ export function discoverCorpus(corpusRoot: string = DEFAULT_CORPUS_ROOT): Corpus
   if (!existsSync(corpusRoot)) {
     throw new Error(
       `Corpus not found at ${corpusRoot}. ` +
-      `Set MDG_BENCH_CORPUS_ROOT to a directory containing conductor/tracks/, or update DEFAULT_CORPUS_ROOT.`,
+      `Set MPG_BENCH_CORPUS_ROOT to a directory containing conductor/tracks/, or update DEFAULT_CORPUS_ROOT.`,
     );
   }
   // If the caller pointed us at a project root, walk into conductor/tracks.

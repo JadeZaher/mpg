@@ -1,4 +1,4 @@
-# mdg benchmarks
+# mpg benchmarks
 
 Three tiers, each answering a different question:
 
@@ -6,7 +6,7 @@ Three tiers, each answering a different question:
 | :--- | :--- | :--- | :--- |
 | **micro** | Do the mind-palace semantics hold? (round-trip, set ops, prune, graph) | seconds | implemented |
 | **meso** | What's the recall/precision/token tradeoff across effort presets on a fixed corpus? | seconds | implemented |
-| **macro** | Does an agent equipped with mdg complete more tasks and/or burn fewer tokens than one without? | hours; needs SWE-bench Lite | scaffold + methodology only |
+| **macro** | Does an agent equipped with mpg complete more tasks and/or burn fewer tokens than one without? | hours; needs SWE-bench Lite | scaffold + methodology only |
 
 Run everything:
 
@@ -40,7 +40,7 @@ For each query × effort cell we record:
 
 - **recall@k** — % of expected hits returned
 - **precision** — % of returned nodes that are relevant
-- **tokens** — mdg's reported `~tokens`
+- **tokens** — mpg's reported `~tokens`
 - **wall-clock ms**
 
 The output is a small table that supports a defensible rule of thumb
@@ -49,13 +49,13 @@ corpus shape." Re-run on your own corpus to derive your own rule.
 
 ### macro — agent task lift (scaffold + methodology)
 
-This is the only benchmark that tells you whether mdg actually helps
+This is the only benchmark that tells you whether mpg actually helps
 real work. It needs:
 
 - a task set (SWE-bench Lite, or 30 curated GitHub issues from your
   own projects)
 - two identical agent harnesses (same model, same tool budget) — one
-  with mdg MCP tools enabled, one without
+  with mpg MCP tools enabled, one without
 - a scorer (did the patch pass the hidden tests? — SWE-bench provides
   this)
 
@@ -72,7 +72,7 @@ keys, etc.).
   regression, even when tests pass.
 - **Don't compare across corpora.** Recall/precision are corpus-
   dependent. Curves are interpretable only against the same fixtures.
-- **Tokens are mdg's estimate.** They're approximate (`chars/4`). For
+- **Tokens are mpg's estimate.** They're approximate (`chars/4`). For
   billing-grade numbers, post-process with a real tokenizer.
 - **Macro lift > meso curve > micro semantics.** A nice meso curve is
   meaningless if macro lift is zero. Macro is the only number that

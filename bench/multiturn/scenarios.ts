@@ -4,7 +4,7 @@
  * Multi-turn scenario definitions for the multi-turn memory bench.
  *
  * A scenario is a SEQUENCE of related queries where later turns build on
- * findings from earlier turns.  The bench tests whether mdg's mind-palace
+ * findings from earlier turns.  The bench tests whether mpg's mind-palace
  * stashing lets the treatment arm carry knowledge cheaply across turns
  * instead of re-searching from scratch.
  *

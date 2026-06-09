@@ -3,7 +3,7 @@
  * and emits BENCHMARKS.md at the repo root.
  *
  * Per-tier behavior:
- *   - meso          (mdg recall-vs-budget): per-effort aggregate.
+ *   - meso          (mpg recall-vs-budget): per-effort aggregate.
  *   - meso-embed    (vector baseline):      per-k aggregate.
  *   - conversational                        per-substrate aggregate.
  *
@@ -183,12 +183,12 @@ function tldr(
   const bullets: string[] = [];
 
   // Compaction: zero-LLM beats LLM at the same budget.
-  if (comp?.summary?.["mdg-scan"] && comp.summary["summarization"]) {
-    const sc = comp.summary["mdg-scan"];
+  if (comp?.summary?.["mpg-scan"] && comp.summary["summarization"]) {
+    const sc = comp.summary["mpg-scan"];
     const sum = comp.summary["summarization"];
     if (sc.mean_pass_rate >= sum.mean_pass_rate) {
       bullets.push(
-        `**Zero-LLM compaction beats LLM summarization** — \`mdg --effort scan\` ${fmtPct(sc.mean_pass_rate)} pass vs summarization's ${fmtPct(sum.mean_pass_rate)} at the same 2k-token budget, at **0 LLM input tokens** vs ${num(sum.mean_input_tokens)}.`,
+        `**Zero-LLM compaction beats LLM summarization** — \`mpg --effort scan\` ${fmtPct(sc.mean_pass_rate)} pass vs summarization's ${fmtPct(sum.mean_pass_rate)} at the same 2k-token budget, at **0 LLM input tokens** vs ${num(sum.mean_input_tokens)}.`,
       );
     }
   }
@@ -196,18 +196,18 @@ function tldr(
   // Conversational: 3.2× cheaper than rg at same recall.
   if (conv?.summary) {
     const rg = conv.summary["ripgrep"];
-    const mdg = conv.summary["mdg"];
-    if (rg && mdg && mdg.tokens > 0 && rg.tokens > mdg.tokens && Math.abs(mdg.recall - rg.recall) < 0.02) {
-      const factor = (rg.tokens / mdg.tokens).toFixed(1);
+    const mpg = conv.summary["mpg"];
+    if (rg && mpg && mpg.tokens > 0 && rg.tokens > mpg.tokens && Math.abs(mpg.recall - rg.recall) < 0.02) {
+      const factor = (rg.tokens / mpg.tokens).toFixed(1);
       bullets.push(
-        `**${factor}× cheaper than ripgrep** on the memory-system corpus — ${num(mdg.tokens)} vs ${num(rg.tokens)} tokens at the same ${fmtPct(mdg.recall)} recall + ${fmtPct(mdg.prec)} precision (\`--effort scan --clip 30\`).`,
+        `**${factor}× cheaper than ripgrep** on the memory-system corpus — ${num(mpg.tokens)} vs ${num(rg.tokens)} tokens at the same ${fmtPct(mpg.recall)} recall + ${fmtPct(mpg.prec)} precision (\`--effort scan --clip 30\`).`,
       );
     }
   }
 
   // Typo: catches what rg can't.
-  if (typo?.summary?.["mdg-fuzzy"] && typo.summary["rg"]) {
-    const f = typo.summary["mdg-fuzzy"];
+  if (typo?.summary?.["mpg-fuzzy"] && typo.summary["rg"]) {
+    const f = typo.summary["mpg-fuzzy"];
     const r = typo.summary["rg"];
     if (f.recall - r.recall > 0.3) {
       bullets.push(
@@ -256,7 +256,7 @@ function tldr(
 
 function header(): string {
   return [
-    "# mdg benchmarks — aggregated results",
+    "# mpg benchmarks — aggregated results",
     "",
     "Automated summary of the most recent `bench/results/*.json` files. Regenerate with:",
     "",
@@ -270,8 +270,8 @@ function header(): string {
 }
 
 function mesoSection(meso: MesoFile | null): string {
-  if (!meso) return "## meso — recall vs budget (mdg)\n\n_No results found. Run `npm run bench:meso`._\n";
-  const lines = ["## meso — recall vs budget (mdg)", "", `_Run: ${meso.generated_at}_`, ""];
+  if (!meso) return "## meso — recall vs budget (mpg)\n\n_No results found. Run `npm run bench:meso`._\n";
+  const lines = ["## meso — recall vs budget (mpg)", "", `_Run: ${meso.generated_at}_`, ""];
   lines.push("| effort | recall | precision | F1 | tokens | ms |");
   lines.push("| :--- | ---: | ---: | ---: | ---: | ---: |");
   for (const [k, v] of Object.entries(meso.summary)) {
@@ -299,8 +299,8 @@ function mesoComparison(meso: MesoFile | null, me: MesoEmbedFile | null): string
   // Pick the embedding-k that matches expected_count (k=5 is a reasonable proxy).
   const e = me.summary["5"] ?? Object.values(me.summary)[0];
   if (!m || !e) return "";
-  const lines = ["### meso head-to-head: mdg (quick) vs embedding (k=5)", ""];
-  lines.push("| metric | mdg quick | embed k=5 | mdg savings |");
+  const lines = ["### meso head-to-head: mpg (quick) vs embedding (k=5)", ""];
+  lines.push("| metric | mpg quick | embed k=5 | mpg savings |");
   lines.push("| :--- | ---: | ---: | ---: |");
   const tokSav = e.tokens === 0 ? 0 : 1 - m.tokens / e.tokens;
   const msSav  = e.ms === 0 ? 0 : 1 - m.ms / e.ms;
@@ -328,17 +328,17 @@ function convSection(conv: ConvFile | null): string {
 function convSavings(conv: ConvFile | null): string {
   if (!conv) return "";
   const rg = conv.summary["ripgrep"];
-  const mdg = conv.summary["mdg"];
+  const mpg = conv.summary["mpg"];
   const ps = conv.summary["powershell"];
   const emb = conv.summary["embed"];
-  if (!rg || !mdg) return "";
+  if (!rg || !mpg) return "";
   const lines = ["### conversational savings vs ripgrep baseline", "",
     "ripgrep at the same recall is the cheapest line-oriented baseline. The savings columns below show what each substrate gives up (or saves) at that recall.",
     "",
     "| substrate | recall vs rg | precision vs rg | token cost vs rg | latency vs rg |",
     "| :--- | ---: | ---: | ---: | ---: |"];
   const pct = (x: number) => x >= 0 ? `+${fmtPct(x)}` : `−${fmtPct(-x)}`;
-  for (const [k, v] of [["mdg", mdg], ["powershell", ps], ["embed", emb]] as Array<[string, SummaryRow]>) {
+  for (const [k, v] of [["mpg", mpg], ["powershell", ps], ["embed", emb]] as Array<[string, SummaryRow]>) {
     if (!v) continue;
     const recallDelta = v.recall - rg.recall;
     const precDelta = v.prec - rg.prec;
@@ -366,28 +366,28 @@ function whatItMeans(
 
   if (conv) {
     const rg = conv.summary["ripgrep"];
-    const mdg = conv.summary["mdg"];
+    const mpg = conv.summary["mpg"];
     const emb = conv.summary["embed"];
     const ps = conv.summary["powershell"];
 
-    if (rg && mdg) {
-      const tokRatio = rg.tokens === 0 ? 0 : mdg.tokens / rg.tokens;
-      const recallDelta = mdg.recall - rg.recall;
-      const precDelta = mdg.prec - rg.prec;
+    if (rg && mpg) {
+      const tokRatio = rg.tokens === 0 ? 0 : mpg.tokens / rg.tokens;
+      const recallDelta = mpg.recall - rg.recall;
+      const precDelta = mpg.prec - rg.prec;
       const within5pct = Math.abs(1 - tokRatio) < 0.05;
       let verdict: string;
       if (within5pct) {
-        verdict = `mdg **ties rg on tokens** (${num(mdg.tokens)} vs ${num(rg.tokens)}, within 5%) at ${fmtPct(mdg.recall)} recall and ${fmtPct(mdg.prec)} precision on the memory-system corpus (conductor track specs + plans + JSON metadata).`;
-        wins.push(`Parity with rg on tokens on the memory-system corpus (${num(mdg.tokens)} vs ${num(rg.tokens)}) at the same recall, with **better precision** than PowerShell. rg has no equivalent budget knob, status field, or pagination.`);
+        verdict = `mpg **ties rg on tokens** (${num(mpg.tokens)} vs ${num(rg.tokens)}, within 5%) at ${fmtPct(mpg.recall)} recall and ${fmtPct(mpg.prec)} precision on the memory-system corpus (conductor track specs + plans + JSON metadata).`;
+        wins.push(`Parity with rg on tokens on the memory-system corpus (${num(mpg.tokens)} vs ${num(rg.tokens)}) at the same recall, with **better precision** than PowerShell. rg has no equivalent budget knob, status field, or pagination.`);
       } else if (tokRatio < 1) {
-        const factor = (rg.tokens / Math.max(1, mdg.tokens)).toFixed(1);
-        verdict = `mdg **${factor}× cheaper than rg** at ${fmtPct(mdg.recall)} recall and ${fmtPct(mdg.prec)} precision (${num(mdg.tokens)} vs ${num(rg.tokens)} tokens). \`--effort scan --clip 30\` returns sub-line snippets with ellipsis markers around each matched span — disambiguation without the line bloat.`;
-        wins.push(`Beats rg on tokens by **${factor}×** (${num(mdg.tokens)} vs ${num(rg.tokens)}) at the same 100% recall + precision via \`--effort scan --clip 30\`.`);
+        const factor = (rg.tokens / Math.max(1, mpg.tokens)).toFixed(1);
+        verdict = `mpg **${factor}× cheaper than rg** at ${fmtPct(mpg.recall)} recall and ${fmtPct(mpg.prec)} precision (${num(mpg.tokens)} vs ${num(rg.tokens)} tokens). \`--effort scan --clip 30\` returns sub-line snippets with ellipsis markers around each matched span — disambiguation without the line bloat.`;
+        wins.push(`Beats rg on tokens by **${factor}×** (${num(mpg.tokens)} vs ${num(rg.tokens)}) at the same 100% recall + precision via \`--effort scan --clip 30\`.`);
       } else {
-        verdict = `mdg costs **${tokRatio.toFixed(1)}× more tokens** than rg at ${fmtPct(Math.abs(recallDelta))} ${recallDelta >= 0 ? "more" : "less"} recall and ${fmtPct(Math.abs(precDelta))} ${precDelta >= 0 ? "more" : "less"} precision. mdg's value here is the per-match windowed context + structured node metadata + token budget knobs that rg lacks — useful when an agent will *consume* the result, not just list lines.`;
-        loses.push(`Higher token cost than rg (${num(mdg.tokens)} vs ${num(rg.tokens)}). mdg returns windowed nodes (file + match line + sized context); rg returns raw lines. The mdg cost is the windowing budget — knobs let an agent trade context size for tokens, which rg cannot.`);
+        verdict = `mpg costs **${tokRatio.toFixed(1)}× more tokens** than rg at ${fmtPct(Math.abs(recallDelta))} ${recallDelta >= 0 ? "more" : "less"} recall and ${fmtPct(Math.abs(precDelta))} ${precDelta >= 0 ? "more" : "less"} precision. mpg's value here is the per-match windowed context + structured node metadata + token budget knobs that rg lacks — useful when an agent will *consume* the result, not just list lines.`;
+        loses.push(`Higher token cost than rg (${num(mpg.tokens)} vs ${num(rg.tokens)}). mpg returns windowed nodes (file + match line + sized context); rg returns raw lines. The mpg cost is the windowing budget — knobs let an agent trade context size for tokens, which rg cannot.`);
       }
-      lines.push(`- **mdg vs ripgrep on the memory-system corpus (markdown specs + JSON metadata, conductor tracks)**: ${verdict}`);
+      lines.push(`- **mpg vs ripgrep on the memory-system corpus (markdown specs + JSON metadata, conductor tracks)**: ${verdict}`);
     }
 
     if (rg && ps) {
@@ -399,10 +399,10 @@ function whatItMeans(
       lines.push(`- **Embeddings vs regex (literal pattern queries) on the memory corpus**: per-file embeddings got ${fmtPct(emb.recall)} recall. Section-level chunking (\`embed-chunked\`) does meaningfully better at a fraction of the token cost — see the chunked section above. For *semantic* recall (paraphrased prompts), see the semantic section below.`);
     }
 
-    if (mdg && rg) {
-      const slow = rg.ms === 0 ? 1 : mdg.ms / rg.ms;
+    if (mpg && rg) {
+      const slow = rg.ms === 0 ? 1 : mpg.ms / rg.ms;
       if (slow > 3) {
-        loses.push(`**Cold-start latency vs rg** (${num(mdg.ms)}ms vs ${num(rg.ms)}ms, ~${slow.toFixed(0)}× slower). This is the cost of Node startup + JSON formatting + token budgeting; mdg's pitch isn't faster grep, it's a *budgeted, addressable, stash-able* lens. For workflows that don't need any of that, rg is the right tool — and mdg's MCP server (warm-call mode) closes most of the gap.`);
+        loses.push(`**Cold-start latency vs rg** (${num(mpg.ms)}ms vs ${num(rg.ms)}ms, ~${slow.toFixed(0)}× slower). This is the cost of Node startup + JSON formatting + token budgeting; mpg's pitch isn't faster grep, it's a *budgeted, addressable, stash-able* lens. For workflows that don't need any of that, rg is the right tool — and mpg's MCP server (warm-call mode) closes most of the gap.`);
       }
     }
   }
@@ -413,20 +413,20 @@ function whatItMeans(
     if (m && e) {
       const tokRatio = e.tokens === 0 ? 0 : m.tokens / e.tokens;
       const recallDelta = m.recall - e.recall;
-      lines.push(`- **Meso (small synthetic code corpus)**: mdg quick → ${fmtPct(m.recall)} recall, ${num(m.tokens)} tokens. Embedding k=5 → ${fmtPct(e.recall)} recall, ${num(e.tokens)} tokens. mdg ${recallDelta >= 0 ? "wins" : "loses"} on recall by ${fmtPct(Math.abs(recallDelta))}, ${tokRatio < 1 ? "saves" : "costs"} ${fmtPct(Math.abs(1 - tokRatio))} tokens. **Caveat**: the meso corpus is too small (8 files) to be load-bearing — expanding fixtures is in the backlog.`);
+      lines.push(`- **Meso (small synthetic code corpus)**: mpg quick → ${fmtPct(m.recall)} recall, ${num(m.tokens)} tokens. Embedding k=5 → ${fmtPct(e.recall)} recall, ${num(e.tokens)} tokens. mpg ${recallDelta >= 0 ? "wins" : "loses"} on recall by ${fmtPct(Math.abs(recallDelta))}, ${tokRatio < 1 ? "saves" : "costs"} ${fmtPct(Math.abs(1 - tokRatio))} tokens. **Caveat**: the meso corpus is too small (8 files) to be load-bearing — expanding fixtures is in the backlog.`);
     }
   }
 
   // Typo tier commentary.
   if (typo) {
-    const f = typo.summary["mdg-fuzzy"];
+    const f = typo.summary["mpg-fuzzy"];
     const rg = typo.summary["rg"];
     if (f && rg) {
       lines.push(
-        `- **Typo tolerance**: \`mdg --fuzzy\` hits **${fmtPct(f.recall)} recall** on typo'd queries (edit distance ≤ 2) at ${fmtPct(f.prec)} precision; rg gets ${fmtPct(rg.recall)} because the literal isn't there.`,
+        `- **Typo tolerance**: \`mpg --fuzzy\` hits **${fmtPct(f.recall)} recall** on typo'd queries (edit distance ≤ 2) at ${fmtPct(f.prec)} precision; rg gets ${fmtPct(rg.recall)} because the literal isn't there.`,
       );
       if (f.recall - rg.recall > 0.3) {
-        wins.push(`**${fmtPct(f.recall)} typo recall** at edit distance ≤ 2 via \`--fuzzy\` (rg: ${fmtPct(rg.recall)}). Catches drop/insert/substitute/swap typos at a fraction of embedding cost.`);
+        wins.push(`**${fmtPct(f.recall)} typo recall** at edit distance ≤ 2 via \`mpg --fuzzy\` (rg: ${fmtPct(rg.recall)}). Catches drop/insert/substitute/swap typos at a fraction of embedding cost.`);
       }
     }
   }
@@ -443,13 +443,13 @@ function whatItMeans(
     const outRatio = c.mean_output_tokens === 0 ? 1 : t.mean_output_tokens / c.mean_output_tokens;
     const inRatio = c.mean_input_tokens === 0 ? 1 : t.mean_input_tokens / c.mean_input_tokens;
     lines.push(
-      `- **Macro task lift (${macro.model || "agent"}, ${macro.tasks} tasks)**: pass-rate ${fmtPct(c.pass_rate)}/${fmtPct(t.pass_rate)} (${passDelta >= 0 ? "+" : ""}${fmtPct(passDelta)} lift). Treatment converges in **${t.mean_turns.toFixed(1)} turns vs ${c.mean_turns.toFixed(1)}** (${turnRatio < 1 ? `${fmtPct(1 - turnRatio)} fewer` : `${fmtPct(turnRatio - 1)} more`}) and emits ${outRatio < 1 ? `**${fmtPct(1 - outRatio)} less**` : `${fmtPct(outRatio - 1)} more`} output reasoning. Input tokens: ${inRatio < 1 ? `**${fmtPct(1 - inRatio)} cheaper**` : `+${fmtPct(inRatio - 1)} (mdg results inline)`}.`,
+      `- **Macro task lift (${macro.model || "agent"}, ${macro.tasks} tasks)**: pass-rate ${fmtPct(c.pass_rate)}/${fmtPct(t.pass_rate)} (${passDelta >= 0 ? "+" : ""}${fmtPct(passDelta)} lift). Treatment converges in **${t.mean_turns.toFixed(1)} turns vs ${c.mean_turns.toFixed(1)}** (${turnRatio < 1 ? `${fmtPct(1 - turnRatio)} fewer` : `${fmtPct(turnRatio - 1)} more`}) and emits ${outRatio < 1 ? `**${fmtPct(1 - outRatio)} less**` : `${fmtPct(outRatio - 1)} more`} output reasoning. Input tokens: ${inRatio < 1 ? `**${fmtPct(1 - inRatio)} cheaper**` : `+${fmtPct(inRatio - 1)} (mpg results inline)`}.`,
     );
     if (passDelta >= 0 && (turnRatio < 0.9 || outRatio < 0.9)) {
       wins.push(`Macro: ${fmtPct(c.pass_rate)}/${fmtPct(t.pass_rate)} pass; treatment uses ${(c.mean_turns / Math.max(0.01, t.mean_turns)).toFixed(2)}× fewer turns. The lens isn't "always cheaper" — it's "fewer round-trips and less verbose reasoning."`);
     }
     if (inRatio > 1.1) {
-      loses.push(`**Macro input-token overhead** (+${fmtPct(inRatio - 1)} vs control). mdg result blocks carry windowed context and metadata; rg returns raw lines. The agent's lens prompt already tells it to skip mdg for single-keyword lookups where rg's output is enough. The trade is: pay tokens for context that converges the agent faster (${(c.mean_turns / Math.max(0.01, t.mean_turns)).toFixed(2)}× fewer turns this run).`);
+      loses.push(`**Macro input-token overhead** (+${fmtPct(inRatio - 1)} vs control). mpg result blocks carry windowed context and metadata; rg returns raw lines. The agent's lens prompt already tells it to skip mpg for single-keyword lookups where rg's output is enough. The trade is: pay tokens for context that converges the agent faster (${(c.mean_turns / Math.max(0.01, t.mean_turns)).toFixed(2)}× fewer turns this run).`);
     }
   }
   if (mt?.summary) {
@@ -464,20 +464,20 @@ function whatItMeans(
       wins.push(`**+${fmtPct(passDelta)} multi-turn pass-rate lift** with mind palace stashing across turns (${fmtPct(c.pass_rate)} → ${fmtPct(t.pass_rate)})${inDelta < 0 ? `, at ${fmtPct(Math.abs(inDelta))} fewer input tokens` : ""}.`);
     }
   }
-  if (comp?.summary && comp.summary["mdg-scan"] && comp.summary["summarization"]) {
-    const sc = comp.summary["mdg-scan"];
+  if (comp?.summary && comp.summary["mpg-scan"] && comp.summary["summarization"]) {
+    const sc = comp.summary["mpg-scan"];
     const sum = comp.summary["summarization"];
     const tr = comp.summary["truncation"];
     lines.push(
-      `- **Compaction (${(comp.tasks ?? sc.n)} topics × ${Object.keys(comp.summary).length} arms, ~2000-token budget)**: **mdg-scan (zero-LLM)** beats single-pass LLM summarization on pass-rate (${fmtPct(sc.mean_pass_rate)} vs ${fmtPct(sum.mean_pass_rate)})${tr ? ` and beats truncation (${fmtPct(tr.mean_pass_rate)})` : ""} at **zero LLM input tokens**. For "compact a topic to N tokens, then Q&A from it," \`mdg --effort scan --clip 30 --sort recent --max-tokens N\` is more reliable than spending ~${num(sum.mean_input_tokens)} tokens on summarization.`,
+      `- **Compaction (${(comp.tasks ?? sc.n)} topics × ${Object.keys(comp.summary).length} arms, ~2000-token budget)**: **mpg-scan (zero-LLM)** beats single-pass LLM summarization on pass-rate (${fmtPct(sc.mean_pass_rate)} vs ${fmtPct(sum.mean_pass_rate)})${tr ? ` and beats truncation (${fmtPct(tr.mean_pass_rate)})` : ""} at **zero LLM input tokens**. For "compact a topic to N tokens, then Q&A from it," \`mpg --effort scan --clip 30 --sort recent --max-tokens N\` is more reliable than spending ~${num(sum.mean_input_tokens)} tokens on summarization.`,
     );
     if (sc.mean_pass_rate > sum.mean_pass_rate) {
-      wins.push(`**Zero-LLM compaction beats LLM summarization** at the same budget (${fmtPct(sc.mean_pass_rate)} vs ${fmtPct(sum.mean_pass_rate)} pass), at zero LLM input tokens. Use \`mdg --effort scan --clip 30 --sort recent --max-tokens N\` instead of an LLM round-trip when the goal is "compact for downstream Q&A."`);
+      wins.push(`**Zero-LLM compaction beats LLM summarization** at the same budget (${fmtPct(sc.mean_pass_rate)} vs ${fmtPct(sum.mean_pass_rate)} pass), at zero LLM input tokens. Use \`mpg --effort scan --clip 30 --sort recent --max-tokens N\` instead of an LLM round-trip when the goal is "compact for downstream Q&A."`);
     }
   }
 
   // Structural wins/losses that don't depend on the run.
-  wins.push("Mind palace set semantics hold (micro: compose=union, intersect=intersection, prune-keep by recency, graph terminates on cycles). rg has no equivalent of any of these — and mdg's actual pitch is **stash, recall, compose across turns**, which rg structurally cannot do.");
+  wins.push("Mind palace set semantics hold (micro: compose=union, intersect=intersection, prune-keep by recency, graph terminates on cycles). rg has no equivalent of any of these — and mpg's actual pitch is **stash, recall, compose across turns**, which rg structurally cannot do.");
 
   lines.push("");
   lines.push("## Wins and trade-offs");
@@ -521,7 +521,7 @@ function macroSection(macro: MacroFile | null): string {
     "",
     `_Model: \`${macro.model}\`. Corpus: \`${macro.corpus_root}\`. Tasks: ${macro.tasks}. Run: ${macro.generated_at}_`,
     "",
-    "Two arms of the same agent: **control** (read/grep/write/bash) vs **treatment** (control + 5 mdg tools). Same model, same task set, same budget caps (20 turns, 50k input tokens per task).",
+    "Two arms of the same agent: **control** (read/grep/write/bash) vs **treatment** (control + 5 mpg tools). Same model, same task set, same budget caps (20 turns, 50k input tokens per task).",
     "",
     "### Per-arm summary",
     "",
@@ -537,7 +537,7 @@ function macroSection(macro: MacroFile | null): string {
     `| pass-rate    | ${lift.pass_rate >= 0 ? "+" : ""}${fmtPct(lift.pass_rate)} | ${lift.pass_rate >= 0 ? "treatment did not regress accuracy" : "treatment dropped accuracy — investigate"} |`,
     `| input tokens | ${lift.input_tokens >= 0 ? "+" : ""}${fmtPct(lift.input_tokens)} | ${lift.input_tokens < -0.1 ? "**meaningful savings**" : lift.input_tokens > 0.1 ? "treatment more expensive" : "near-parity"} |`,
     `| output tokens | ${lift.output_tokens >= 0 ? "+" : ""}${fmtPct(lift.output_tokens)} | reasoning-verbosity proxy |`,
-    `| wall-clock | ${lift.ms >= 0 ? "+" : ""}${fmtPct(lift.ms)} | latency overhead is mostly mdg CLI spawn |`,
+    `| wall-clock | ${lift.ms >= 0 ? "+" : ""}${fmtPct(lift.ms)} | latency overhead is mostly mpg CLI spawn |`,
     "",
   ];
 
@@ -611,7 +611,7 @@ function typoSection(t: TypoFile | null): string {
   const lines = [
     "## typo tolerance — fuzzy search on typo'd queries",
     "",
-    `_Run: ${t.generated_at}. Each query has a CORRECT literal (defines ground truth via rg) and a TYPO'd version fed to every substrate. Tests \`mdg --fuzzy\` against rg, mdg-without-fuzzy, and per-file embeddings._`,
+    `_Run: ${t.generated_at}. Each query has a CORRECT literal (defines ground truth via rg) and a TYPO'd version fed to every substrate. Tests \`mpg --fuzzy\` against rg, mpg-without-fuzzy, and per-file embeddings._`,
     "",
   ];
   if (t.summary) {
@@ -705,15 +705,15 @@ function compactionSection(c: CompactionFile | null): string {
     "",
     `_Tasks: ${c.tasks}. Mega-corpus: ${c.corpus_files} files across ${(c.corpus_roots ?? []).length} projects. Run: ${c.generated_at}_`,
     "",
-    "The honest test of mdg as a memory primitive: given a topic + token budget, can it assemble a compaction a downstream LLM can answer Q&A from? Arms compared:",
+    "The honest test of mpg as a memory primitive: given a topic + token budget, can it assemble a compaction a downstream LLM can answer Q&A from? Arms compared:",
     "",
     "- **truncation** — no-LLM baseline. Most-recent files until budget.",
-    "- **mdg-scan** — no-LLM mdg call: `scan + sort recent + window-curve log + max-tokens budget`. The headline finding.",
+    "- **mpg-scan** — no-LLM mpg call: `scan + sort recent + window-curve log + max-tokens budget`. The headline finding.",
     "- **summarization** — LLM baseline: rg-retrieve + single-pass LLM compaction.",
     "",
   ];
   if (c.status === "partial") {
-    lines.push(`_Partial run (no API key): only truncation + mdg-scan arms ran without scoring._`);
+    lines.push(`_Partial run (no API key): only truncation + mpg-scan arms ran without scoring._`);
     lines.push("");
   }
   if (c.summary) {

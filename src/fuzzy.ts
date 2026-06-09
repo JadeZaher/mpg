@@ -88,9 +88,9 @@ export function buildFuzzyRegex(search: string): string {
     );
   }
   if (/[\\^$.()\[\]{}|*+?]/.test(search)) {
-    if (process.env.MDG_DEBUG) {
+    if (process.env.MPG_DEBUG) {
       process.stderr.write(
-        `mdg[fuzzy]: pattern contains regex meta-chars, fuzzy matching skipped: ${JSON.stringify(search)}\n`,
+        `mpg[fuzzy]: pattern contains regex meta-chars, fuzzy matching skipped: ${JSON.stringify(search)}\n`,
       );
     }
     return search;
@@ -114,9 +114,9 @@ export function buildFuzzyRegex(search: string): string {
     // Levenshtein post-filter in verifyFuzzy then re-validates around
     // each hit.
     const longest = [...tokens].sort((a, b) => b.length - a.length)[0];
-    if (process.env.MDG_DEBUG) {
+    if (process.env.MPG_DEBUG) {
       process.stderr.write(
-        `mdg[fuzzy]: ${all.size} trigrams exceeded cap ${MAX_TRIGRAMS}; ` +
+        `mpg[fuzzy]: ${all.size} trigrams exceeded cap ${MAX_TRIGRAMS}; ` +
         `falling back to literal search of "${longest}"\n`,
       );
     }

@@ -38,12 +38,12 @@ export function formatPalaceList(
 ): string {
   const out: string[] = [];
   const ann = paginationAnnotation(pagination);
-  out.push(`<mdg mind-palace path="${palacePath}" count="${stashes.length}"${ann}>`);
+  out.push(`<mpg mind-palace path="${palacePath}" count="${stashes.length}"${ann}>`);
   if (stashes.length === 0 && !pagination) {
     out.push("");
     out.push(c(useColor, DIM, "(empty — no stashes. Use --mp-stash <name> <note> to create one.)"));
     out.push("");
-    out.push("</mdg mind-palace>");
+    out.push("</mpg mind-palace>");
     return out.join("\n");
   }
   // Sort by updated_at descending so recent ones are first.
@@ -72,7 +72,7 @@ export function formatPalaceList(
     out.push(c(useColor, DIM, paginationTextNote(pagination) + (pagination.has_next ? " (more pages available — pass --page N)" : "")));
   }
   out.push("");
-  out.push("</mdg mind-palace>");
+  out.push("</mpg mind-palace>");
   return out.join("\n");
 }
 
@@ -96,7 +96,7 @@ export function formatPalaceGet(
   const out: string[] = [];
   const ann = paginationAnnotation(pagination);
   const view = withNodes ? "full" : "card";
-  out.push(`<mdg mind-palace-get name="${stash.name}" view="${view}" path="${palacePath}"${ann}>`);
+  out.push(`<mpg mind-palace-get name="${stash.name}" view="${view}" path="${palacePath}"${ann}>`);
   out.push("");
   out.push(c(useColor, BOLD, `STASH: ${stash.name}`));
   out.push(`note:     ${stash.note || c(useColor, DIM, "(no note)")}`);
@@ -158,7 +158,7 @@ export function formatPalaceGet(
   }
 
   out.push("");
-  out.push("</mdg mind-palace-get>");
+  out.push("</mpg mind-palace-get>");
   return out.join("\n");
 }
 
@@ -170,5 +170,5 @@ export function formatPalaceStash(
   tokens: number,
   palacePath: string,
 ): string {
-  return `<mdg mind-palace-stash action="${action}" name="${name}" nodes="${nodeCount}" tokens="~${tokens}" path="${palacePath}"/>`;
+  return `<mpg mind-palace-stash action="${action}" name="${name}" nodes="${nodeCount}" tokens="~${tokens}" path="${palacePath}"/>`;
 }

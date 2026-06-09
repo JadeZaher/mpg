@@ -5,7 +5,7 @@
  * the matched line plus a pre/post context window sized in tokens.
  *
  * The pre/post windows are built greedily outward from the match line,
- * so they fit exactly within the budget. This is what makes mdg
+ * so they fit exactly within the budget. This is what makes mpg
  * different from `rg -C N`: we budget in *tokens*, not lines.
  */
 

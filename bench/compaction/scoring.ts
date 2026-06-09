@@ -14,9 +14,9 @@ import { getClient } from "../macro/agent/client.js";
 import { getOpenRouterClient, DEFAULT_OPENROUTER_MODEL } from "../macro/agent/openrouter-client.js";
 import type { CompactionQA } from "./tasks.js";
 
-const PROVIDER = ((process.env.MDG_BENCH_PROVIDER ?? "anthropic").toLowerCase() === "openrouter") ? "openrouter" : "anthropic";
+const PROVIDER = ((process.env.MPG_BENCH_PROVIDER ?? "anthropic").toLowerCase() === "openrouter") ? "openrouter" : "anthropic";
 const SCORER_MODEL =
-  process.env.MDG_BENCH_SCORER_MODEL ??
+  process.env.MPG_BENCH_SCORER_MODEL ??
   (PROVIDER === "openrouter" ? DEFAULT_OPENROUTER_MODEL : "claude-haiku-4-5-20251001");
 const INTER_CALL_DELAY_MS = 300;
 

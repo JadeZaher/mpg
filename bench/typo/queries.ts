@@ -4,8 +4,8 @@
  * Each query has a correct literal AND a deliberate typo (drop-char,
  * adjacent-swap, or single-letter substitution). Substrates:
  *   - rg                    receives the typo'd pattern as-is. Expected: 0% recall.
- *   - mdg                   receives typo'd pattern, no fuzzy. Expected: 0%.
- *   - mdg --fuzzy           receives typo'd pattern, fuzzy on. Expected: ~rg-correct-recall.
+ *   - mpg                   receives typo'd pattern, no fuzzy. Expected: 0%.
+ *   - mpg --fuzzy           receives typo'd pattern, fuzzy on. Expected: ~rg-correct-recall.
  *   - embed                 receives the typo'd pattern as a prompt. Per-file embeddings.
  *
  * Ground truth = files where the CORRECT pattern matches via rg. The

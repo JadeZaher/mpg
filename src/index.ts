@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * mdg — entry point.
+ * mpg — entry point.
  *
  * Wires together: arg parsing → source resolution → rg search → node
  * building → budget enforcement → (optional) mind-palace operations
@@ -46,7 +46,7 @@ import { buildFuzzyRegex, verifyFuzzy } from "./fuzzy.js";
 import type { Node, ResolvedConfig, Result, Source } from "./types.js";
 import type { Stash } from "./mind-palace.js";
 
-const VERSION = "0.2.5";
+const VERSION = "0.3.0";
 
 // Fuzzy matching is now in ./fuzzy.ts (trigram-union regex + Levenshtein
 // post-filter; handles drop/insert/substitute/swap up to edit distance 2).
@@ -64,18 +64,18 @@ async function main(): Promise<number> {
       return 0;
     }
     if (err instanceof VersionRequestedError) {
-      process.stdout.write(`mdg ${VERSION}\n`);
+      process.stdout.write(`mpg ${VERSION}\n`);
       return 0;
     }
-    process.stderr.write(`mdg: ${(err as Error).message}\n`);
-    process.stderr.write(`Run 'mdg --help' for usage.\n`);
+    process.stderr.write(`mpg: ${(err as Error).message}\n`);
+    process.stderr.write(`Run 'mpg --help' for usage.\n`);
     return 2;
   }
 
   // 2. Handle --ls / --tree (discovery command).
   // Stream rg's stdout straight through — `rg --files` on a large
   // monorepo can far exceed any reasonable buffer cap. Blocking the
-  // event loop on a buffered exec also causes parallel sibling mdg
+  // event loop on a buffered exec also causes parallel sibling mpg
   // calls in the same agent turn to time out.
   if (config.ls) {
     const { spawn } = await import("node:child_process");
@@ -89,7 +89,7 @@ async function main(): Promise<number> {
       proc.stderr.setEncoding("utf8");
       proc.stderr.on("data", (chunk: string) => { stderr += chunk; });
       proc.on("error", (err) => {
-        process.stderr.write(`mdg: ${err.message}\n`);
+        process.stderr.write(`mpg: ${err.message}\n`);
         resolve(3);
       });
       proc.on("close", (code) => {
@@ -97,7 +97,7 @@ async function main(): Promise<number> {
           resolve(0);
           return;
         }
-        process.stderr.write(`mdg: rg --files exited with code ${code}: ${stderr.trim()}\n`);
+        process.stderr.write(`mpg: rg --files exited with code ${code}: ${stderr.trim()}\n`);
         resolve(3);
       });
     });
@@ -159,7 +159,7 @@ async function main(): Promise<number> {
     const { name: stashName, with_nodes: withNodes } = config.mind_palace.get;
     const stash = getStash(palace, stashName);
     if (!stash) {
-      process.stderr.write(`mdg: no such stash: ${stashName}\n`);
+      process.stderr.write(`mpg: no such stash: ${stashName}\n`);
       return 4;
     }
     // Card view (default) skips the captured nodes entirely — much
@@ -183,11 +183,11 @@ async function main(): Promise<number> {
   if (config.mind_palace?.drop) {
     const ok = dropStash(palace, config.mind_palace.drop);
     if (!ok) {
-      process.stderr.write(`mdg: no such stash: ${config.mind_palace.drop}\n`);
+      process.stderr.write(`mpg: no such stash: ${config.mind_palace.drop}\n`);
       return 4;
     }
     savePalace(palacePath, palace);
-    process.stderr.write(`mdg: dropped stash "${config.mind_palace.drop}"\n`);
+    process.stderr.write(`mpg: dropped stash "${config.mind_palace.drop}"\n`);
     return 0;
   }
   if (config.mind_palace?.link) {
@@ -197,7 +197,7 @@ async function main(): Promise<number> {
       process.stdout.write(formatRelationResult("linked", config.mind_palace.link, rel));
       return 0;
     } catch (err) {
-      process.stderr.write(`mdg: ${(err as Error).message}\n`);
+      process.stderr.write(`mpg: ${(err as Error).message}\n`);
       return 4;
     }
   }
@@ -205,10 +205,10 @@ async function main(): Promise<number> {
     try {
       removeRelation(palace, config.mind_palace.unlink.from, config.mind_palace.unlink.to);
       savePalace(palacePath, palace);
-      process.stdout.write(`<mdg unlink from="${config.mind_palace.unlink.from}" to="${config.mind_palace.unlink.to}"/>\n`);
+      process.stdout.write(`<mpg unlink from="${config.mind_palace.unlink.from}" to="${config.mind_palace.unlink.to}"/>\n`);
       return 0;
     } catch (err) {
-      process.stderr.write(`mdg: ${(err as Error).message}\n`);
+      process.stderr.write(`mpg: ${(err as Error).message}\n`);
       return 4;
     }
   }
@@ -225,7 +225,7 @@ async function main(): Promise<number> {
 
   // 3. From this point on we need a search to run.
   if (!config.pattern) {
-    process.stderr.write("mdg: a pattern is required for searches and --mp-stash/--mp-from/--mp-compose.\n");
+    process.stderr.write("mpg: a pattern is required for searches and --mp-stash/--mp-from/--mp-compose.\n");
     return 2;
   }
 
@@ -258,7 +258,7 @@ async function main(): Promise<number> {
           const s = palace.stashes[name];
           if (!s) {
             throw new Error(
-              `Unknown stash: ${name}. Run 'mdg --mp-list' to see available stashes.`,
+              `Unknown stash: ${name}. Run 'mpg --mp-list' to see available stashes.`,
             );
           }
           for (const src of s.sources) excludeIds.add(src);
@@ -277,7 +277,7 @@ async function main(): Promise<number> {
         config.inputs.unshift({ type: "path", path: s.id });
       }
     } catch (err) {
-      process.stderr.write(`mdg: ${(err as Error).message}\n`);
+      process.stderr.write(`mpg: ${(err as Error).message}\n`);
       return 4;
     }
   }
@@ -361,11 +361,11 @@ async function main(): Promise<number> {
       }
     } catch (err) {
       if (err instanceof RgNotFoundError) {
-        process.stderr.write(`mdg: ${err.message}\n`);
+        process.stderr.write(`mpg: ${err.message}\n`);
         return 3;
       }
       if (err instanceof RgError) {
-        process.stderr.write(`mdg: ${err.message}\n`);
+        process.stderr.write(`mpg: ${err.message}\n`);
         continue;
       }
       throw err;
@@ -482,7 +482,7 @@ async function main(): Promise<number> {
   if (stashedAction) {
     const s = config.mind_palace!.stash!;
     process.stderr.write(
-      `mdg: ${stashedAction} stash "${s.name}" (${budgetedNodes.length} nodes, ${result.total_tokens} tokens) at ${palacePath}\n`,
+      `mpg: ${stashedAction} stash "${s.name}" (${budgetedNodes.length} nodes, ${result.total_tokens} tokens) at ${palacePath}\n`,
     );
   }
 
@@ -495,10 +495,10 @@ function formatRelationResult(
   link: { from: string; to: string; type: string; note: string },
   rel: { type: string; note: string; created_at: string },
 ): string {
-  return `<mdg relation action=${action} from="${link.from}" to="${link.to}" type="${rel.type}">
+  return `<mpg relation action=${action} from="${link.from}" to="${link.to}" type="${rel.type}">
   ${link.from} --(${rel.type})--> ${link.to}
   ${rel.note ? `note: ${rel.note}\n` : ""}created: ${rel.created_at}
-</mdg relation>\n`;
+</mpg relation>\n`;
 }
 
 function formatRelated(
@@ -506,15 +506,15 @@ function formatRelated(
   center: string,
 ): string {
   if (related.length === 0) {
-    return `<mdg related name="${center}">No relationships found.</mdg related>\n`;
+    return `<mpg related name="${center}">No relationships found.</mpg related>\n`;
   }
   const out: string[] = [];
-  out.push(`<mdg related name="${center}" count="${related.length}">`);
+  out.push(`<mpg related name="${center}" count="${related.length}">`);
   for (const r of related) {
     const dir = r.direction === "outbound" ? `--> ${r.stash.name}` : `${r.stash.name} -->`;
     out.push(`  ${dir}  [${r.relation.type}]${r.relation.note ? ` "${r.relation.note}"` : ""}`);
   }
-  out.push("</mdg related>");
+  out.push("</mpg related>");
   return out.join("\n");
 }
 
@@ -524,25 +524,25 @@ function formatGraph(
   maxDepth: number,
 ): string {
   if (graph.length === 0) {
-    return `<mdg graph name="${root}">No relationships found.</mdg graph>\n`;
+    return `<mpg graph name="${root}">No relationships found.</mpg graph>\n`;
   }
   const out: string[] = [];
-  out.push(`<mdg graph name="${root}" nodes="${graph.length}" max_depth="${maxDepth}">`);
+  out.push(`<mpg graph name="${root}" nodes="${graph.length}" max_depth="${maxDepth}">`);
   for (const g of graph) {
     const indent = "  ".repeat(g.depth);
     const dir = g.direction === "outbound" ? "-->" : "<--";
     out.push(`${indent}[depth ${g.depth}] ${g.via} ${dir} ${g.stash.name}  [${g.relation.type}]${g.relation.note ? ` "${g.relation.note}"` : ""}`);
   }
-  out.push("</mdg graph>");
+  out.push("</mpg graph>");
   return out.join("\n");
 }
 function formatPruneResult(r: { removed: number; names: string[]; dry_run: boolean }): string {
   const tag = r.dry_run ? " (DRY RUN — nothing was deleted)" : "";
   if (r.removed === 0) {
-    return `<mdg prune result removed=0>No stashes matched the prune criteria.${tag}</mdg prune>\n`;
+    return `<mpg prune result removed=0>No stashes matched the prune criteria.${tag}</mpg prune>\n`;
   }
   const names = r.names.map((n) => `  - ${n}`).join("\n");
-  return `<mdg prune result removed=${r.removed} dry_run=${r.dry_run}>\nRemoved stashes (${r.removed}):\n${names}\n${tag}\n</mdg prune>\n`;
+  return `<mpg prune result removed=${r.removed} dry_run=${r.dry_run}>\nRemoved stashes (${r.removed}):\n${names}\n${tag}\n</mpg prune>\n`;
 }
 async function resolveInputs(
   inputs: ResolvedConfig["inputs"],
@@ -588,7 +588,7 @@ async function resolveInputs(
 main().then(
   (code) => process.exit(code),
   (err) => {
-    process.stderr.write(`mdg: unexpected error: ${(err as Error).stack ?? err}\n`);
+    process.stderr.write(`mpg: unexpected error: ${(err as Error).stack ?? err}\n`);
     process.exit(99);
   },
 );

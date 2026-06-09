@@ -15,7 +15,7 @@
  *     letting V8 string-concat blow up O(n^2).
  *   - Clip per-Match `text` so a single oversized match line can't
  *     pin many megabytes into `pendingMatches` once per submatch.
- *   - Surface JSON parse failures via `MDG_DEBUG` instead of silently
+ *   - Surface JSON parse failures via `MPG_DEBUG` instead of silently
  *     swallowing them — otherwise a truncated tail line looks like a
  *     clean "no matches" result.
  */
@@ -72,8 +72,8 @@ interface RgJsonMatch {
 type RgJsonLine = RgJsonMatch | { type: string; data: unknown };
 
 function debugLog(msg: string): void {
-  if (process.env.MDG_DEBUG) {
-    try { process.stderr.write(`mdg[rg]: ${msg}\n`); } catch { /* ignore */ }
+  if (process.env.MPG_DEBUG) {
+    try { process.stderr.write(`mpg[rg]: ${msg}\n`); } catch { /* ignore */ }
   }
 }
 
@@ -119,7 +119,7 @@ export async function* runRg(
     const tmpDir = process.env.TMPDIR || process.env.TMP || process.env.TEMP || "/tmp";
     const safeId = source.id.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
     const rand = randomBytes(6).toString("hex");
-    const tmpPath = resolvePath(tmpDir, `mdg-${process.pid}-${Date.now()}-${rand}-${safeId}`);
+    const tmpPath = resolvePath(tmpDir, `mpg-${process.pid}-${Date.now()}-${rand}-${safeId}`);
     const { writeFileSync, unlinkSync } = await import("node:fs");
     writeFileSync(tmpPath, sourceContent, "utf8");
     cleanup = () => {
@@ -278,7 +278,7 @@ export async function* runRg(
     }
     if (bufferOverflow) {
       throw new RgError(
-        `mdg: a single match line exceeded ${MAX_LINE_BUFFER_BYTES} bytes ` +
+        `mpg: a single match line exceeded ${MAX_LINE_BUFFER_BYTES} bytes ` +
         `for source ${source.id}. This usually means a minified asset or ` +
         `generated blob — exclude it with --glob '!path' or pass a more ` +
         `restrictive pattern.`,

@@ -1,7 +1,7 @@
 /**
  * Source resolution.
  *
- * A "source" is a stream of text we can search. mdg supports four kinds:
+ * A "source" is a stream of text we can search. mpg supports four kinds:
  *
  *   - file/glob: read from disk
  *   - command:   exec a shell command, search its stdout
@@ -364,7 +364,7 @@ export async function captureCommand(cmd: string): Promise<string> {
         // Successful path: caller gets the truncated output plus a
         // marker. We don't reject because partial data is still useful.
         const out = Buffer.concat(chunks).toString("utf8") +
-          `\n[mdg: command output truncated at ${COMMAND_OUTPUT_MAX_BYTES} bytes]\n`;
+          `\n[mpg: command output truncated at ${COMMAND_OUTPUT_MAX_BYTES} bytes]\n`;
         resolve(out);
         return;
       }
@@ -397,7 +397,7 @@ export async function captureUrl(url: string): Promise<string> {
   try {
     res = await fetch(url, {
       redirect: "follow",
-      headers: { "user-agent": "mdg/0.2 (+https://github.com/JadeZaher/mdg)" },
+      headers: { "user-agent": "mpg/0.3 (+https://github.com/JadeZaher/mpg)" },
       signal: controller.signal,
     });
   } catch (err) {

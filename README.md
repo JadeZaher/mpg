@@ -1,6 +1,6 @@
-# mdg — node-centric context retrieval for LLM harnesses
+# mpg — node-centric context retrieval for LLM harnesses
 
-`mdg` is a CLI tool for retrieving **token-budgeted context nodes** from
+`mpg` is a CLI tool for retrieving **token-budgeted context nodes** from
 files, command output, URLs, and stdin, designed to be consumed directly by
 LLM harnesses.
 
@@ -11,24 +11,24 @@ independently. The depth of context is adjusted by `effort` rather than by
 blindly loading more text.
 
 Plus a persistent **mind palace** — named, addressable stashes of
-search results that compose, intersect, prune, and form a graph. mdg is
+search results that compose, intersect, prune, and form a graph. mpg is
 how agents browse and trim long-term memory, not just how they grep.
 
 ## Headline numbers vs alternatives
 
 Pulled from the in-repo benchmark suite (`bench/` + [`BENCHMARKS.md`](./BENCHMARKS.md)).
 
-| workload | mdg config | result vs alternatives |
+| workload | mpg config | result vs alternatives |
 | :--- | :--- | :--- |
 | Literal recall on a markdown/JSON memory corpus | `--effort scan --clip 30` | 100% / 100% / **377 tokens** vs ripgrep's 1,197 — **3.2× cheaper than rg** |
 | Typo-tolerant search (drop / insert / swap / sub) | `--fuzzy` | **100%** recall vs ripgrep's 0%, ~12× cheaper than per-file embedding retrieval |
 | Topic compaction at fixed token budget | `--effort scan --clip 30 --max-tokens N` | 67% downstream-Q&A pass vs LLM summarization's 33% — at **zero LLM input tokens** |
-| Multi-turn agent convergence | `mdg_search` + `mdg_stash` | 24% fewer input tokens, **half the tool calls and turns** vs read+grep control |
+| Multi-turn agent convergence | `mpg_search` + `mpg_stash` | 24% fewer input tokens, **half the tool calls and turns** vs read+grep control |
 | Mind palace set semantics | `--mp-compose` / `--mp-intersect` / `--mp-except` | 17/17 micro assertions pass |
 
 See [`BENCHMARKS.md`](./BENCHMARKS.md) for the full scorecard across six
 tiers (micro, meso, conversational, semantic, typo, compaction, macro,
-multi-turn) and the raw cell-by-cell breakdowns. Where mdg loses (single-
+multi-turn) and the raw cell-by-cell breakdowns. Where mpg loses (single-
 keyword greps, CLI cold start), the numbers are reported honestly.
 
 ## Command reference
@@ -36,7 +36,7 @@ keyword greps, CLI cold start), the numbers are reported honestly.
 Every flag, grouped by category. The shape of every command is:
 
 ```
-mdg [<pattern>] [options]
+mpg [<pattern>] [options]
 ```
 
 `<pattern>` is a ripgrep regex (or a literal string with `-F`). It is
@@ -48,14 +48,14 @@ pure palace operations (`--mp-list`, `--mp-get`, `--mp-drop`, `--mp-link`,
 
 | Flag | Example | What it does |
 | :--- | :--- | :--- |
-| `-i, --in <path>...` | `mdg "TODO" --in src/ test/` | One or more files, dirs, or globs. Greedy: consumes non-flag args. Dirs recurse. |
-| `--in @<file>` | `mdg "TODO" --in @files.txt` | Read path list from a file (one per line, `#` comments). |
-| `--in @-` | `ls *.ts \| mdg "TODO" --in @-` | Read path list from stdin. |
-| `--in a,b,c` | `mdg "TODO" --in src/,test/` | Comma-separated path list. |
-| trailing paths | `mdg "TODO" src/ test/` | rg-style positionals; equivalent to `--in`. |
-| `--cmd <cmd>` | `mdg "error" --cmd "git log --oneline -100"` | Search the stdout of a shell command. |
-| `--stdin` | `cat README.md \| mdg "install"` | Search piped stdin (auto-detected when piped). |
-| `-u, --url <url>` | `mdg "deprecated" -u https://example.com/docs` | Fetch URL body and search it. |
+| `-i, --in <path>...` | `mpg "TODO" --in src/ test/` | One or more files, dirs, or globs. Greedy: consumes non-flag args. Dirs recurse. |
+| `--in @<file>` | `mpg "TODO" --in @files.txt` | Read path list from a file (one per line, `#` comments). |
+| `--in @-` | `ls *.ts \| mpg "TODO" --in @-` | Read path list from stdin. |
+| `--in a,b,c` | `mpg "TODO" --in src/,test/` | Comma-separated path list. |
+| trailing paths | `mpg "TODO" src/ test/` | rg-style positionals; equivalent to `--in`. |
+| `--cmd <cmd>` | `mpg "error" --cmd "git log --oneline -100"` | Search the stdout of a shell command. |
+| `--stdin` | `cat README.md \| mpg "install"` | Search piped stdin (auto-detected when piped). |
+| `-u, --url <url>` | `mpg "deprecated" -u https://example.com/docs` | Fetch URL body and search it. |
 
 ### Node sizing — control context width and density
 
@@ -103,26 +103,26 @@ pure palace operations (`--mp-list`, `--mp-get`, `--mp-drop`, `--mp-link`,
 
 ### Mind palace — instantiable short-term memory
 
-A palace is a JSON file (default `./.mdg/mind-palace.json`) that holds
+A palace is a JSON file (default `./.mpg/mind-palace.json`) that holds
 named **stashes** of search results. Stashes are addressable: future
 searches can use them as inputs.
 
 | Flag | Example | What it does |
 | :--- | :--- | :--- |
-| `--mp-stash <name> <note>` | `mdg "TODO" --in src/ --mp-stash auth "Auth TODOs"` | Run the search, save the result under `name`. Merges into an existing stash; pass `--mp-replace` to overwrite. |
+| `--mp-stash <name> <note>` | `mpg "TODO" --in src/ --mp-stash auth "Auth TODOs"` | Run the search, save the result under `name`. Merges into an existing stash; pass `--mp-replace` to overwrite. |
 | `--mp-stash-note <note>` | `--mp-stash-note "extra context"` | Set the note separately. |
 | `--mp-stash-tag <tag>` / `--mp-tag <tag>` | `--mp-tag p0 --mp-tag auth` | Tag a stash (repeatable). |
 | `--mp-replace` | `--mp-replace` | Overwrite an existing stash rather than merging. |
 | `--mp-ttl <duration>` | `--mp-ttl 2h` | Auto-expire this stash after the duration (e.g. `30m`, `2h`, `7d`). |
-| `--mp-list` | `mdg --mp-list` | List all stashes (with relative timestamps). |
-| `--mp-list-tag <tag>` | `mdg --mp-list --mp-list-tag p0` | Filter list by tag (repeatable). |
-| `--mp-get <name>` | `mdg --mp-get auth` | Show the full contents of one stash. |
-| `--mp-drop <name>` | `mdg --mp-drop auth` | Remove a stash. |
-| `--mp-from <name>` | `mdg "rate.limit" --mp-from auth` | Re-run a fresh search, scoped to the files in a stash. |
-| `--mp-compose <a> <b>...` | `mdg "error" --mp-compose auth perf` | Run a search across the **union** of multiple stashes' files. |
-| `--mp-except <a>` / `--mp-except <a> <b>...` | `mdg "TODO" --mp-except deprecated` | Search files NOT in the listed stash(es). |
-| `--mp-intersect <a> <b>...` | `mdg "TODO" --mp-intersect auth perf` | Search files in **all** the listed stashes (set intersection). |
-| `--mp-path <file>` | `--mp-path .mdg/task-42.json` | Use an isolated palace file. Also: `MDG_MIND_PALACE` env var. |
+| `--mp-list` | `mpg --mp-list` | List all stashes (with relative timestamps). |
+| `--mp-list-tag <tag>` | `mpg --mp-list --mp-list-tag p0` | Filter list by tag (repeatable). |
+| `--mp-get <name>` | `mpg --mp-get auth` | Show the full contents of one stash. |
+| `--mp-drop <name>` | `mpg --mp-drop auth` | Remove a stash. |
+| `--mp-from <name>` | `mpg "rate.limit" --mp-from auth` | Re-run a fresh search, scoped to the files in a stash. |
+| `--mp-compose <a> <b>...` | `mpg "error" --mp-compose auth perf` | Run a search across the **union** of multiple stashes' files. |
+| `--mp-except <a>` / `--mp-except <a> <b>...` | `mpg "TODO" --mp-except deprecated` | Search files NOT in the listed stash(es). |
+| `--mp-intersect <a> <b>...` | `mpg "TODO" --mp-intersect auth perf` | Search files in **all** the listed stashes (set intersection). |
+| `--mp-path <file>` | `--mp-path .mpg/task-42.json` | Use an isolated palace file. Also: `MPG_MIND_PALACE` env var. |
 | `--mp-stash-locations` | `--mp-stash-locations` | Save only file:line pointers, drop context text (lean stashes). |
 
 ### Pruning — keep the palace from growing unbounded
@@ -136,75 +136,75 @@ searches can use them as inputs.
 | `--mp-prune-all` | `--mp-prune-all --mp-prune-confirm` | Clear the entire palace. `--mp-prune-confirm` required. |
 | `--mp-prune-dry-run` | `--mp-prune-older-than 7d --mp-prune-dry-run` | Show what *would* be pruned, don't delete. **Use this first.** |
 
-### Relationships — make the *graph* in markdowngraphcli real
+### Relationships — make the *graph* in mind-palace-graph real
 
 | Flag | Example | What it does |
 | :--- | :--- | :--- |
-| `--mp-link <from> <to> <type> [note]` | `mdg --mp-link auth perf depends-on "shared db"` | Create a directed edge. Types: `depends-on`, `related-to`, `see-also`, `parent-of`, `child-of`, `supersedes`, or any custom string. |
-| `--mp-unlink <from> <to>` | `mdg --mp-unlink auth perf` | Remove a relationship. |
-| `--mp-related <name>` | `mdg --mp-related auth` | Show all stashes connected to `name` (inbound + outbound). |
-| `--mp-graph <name> [depth]` | `mdg --mp-graph auth 3` | Traversal graph from `name` up to `[depth]` (default 3). |
+| `--mp-link <from> <to> <type> [note]` | `mpg --mp-link auth perf depends-on "shared db"` | Create a directed edge. Types: `depends-on`, `related-to`, `see-also`, `parent-of`, `child-of`, `supersedes`, or any custom string. |
+| `--mp-unlink <from> <to>` | `mpg --mp-unlink auth perf` | Remove a relationship. |
+| `--mp-related <name>` | `mpg --mp-related auth` | Show all stashes connected to `name` (inbound + outbound). |
+| `--mp-graph <name> [depth]` | `mpg --mp-graph auth 3` | Traversal graph from `name` up to `[depth]` (default 3). |
 
 ### Discovery & meta
 
 | Flag | Example | What it does |
 | :--- | :--- | :--- |
-| `--ls` / `--tree` | `mdg --ls --in src/` | List/tree all searchable files under the given paths and exit. |
-| `-h, --help` | `mdg --help` | Show inline help. |
-| `-v, --version` | `mdg --version` | Print version. |
+| `--ls` / `--tree` | `mpg --ls --in src/` | List/tree all searchable files under the given paths and exit. |
+| `-h, --help` | `mpg --help` | Show inline help. |
+| `-v, --version` | `mpg --version` | Print version. |
 
 ### Environment variables
 
 | Variable | Effect |
 | :--- | :--- |
-| `MDG_MIND_PALACE` | Override default palace path (`./.mdg/mind-palace.json`). |
-| `MDG_PATTERN` | Default pattern if none is passed positionally. |
+| `MPG_MIND_PALACE` | Override default palace path (`./.mpg/mind-palace.json`). |
+| `MPG_PATTERN` | Default pattern if none is passed positionally. |
 
 ### Common recipes (copy-paste)
 
 ```bash
 # Cheapest first-touch index — "browse my recent memory"
 # 3.2x cheaper than rg at 100/100 recall/precision on memory-system content.
-mdg "JWT|Bearer|ProviderContext" --in . \
+mpg "JWT|Bearer|ProviderContext" --in . \
   --effort scan --clip 30 --sort recent --page 1 --page-size 10
 
 # Typo-tolerant search (catches drop/insert/substitute/swap, edit dist <= 2)
-mdg "PrvderiContext" --in . --fuzzy --effort scan --clip 30
+mpg "PrvderiContext" --in . --fuzzy --effort scan --clip 30
 
 # Topic compaction at a hard token budget (zero LLM cost)
-mdg "auth|JWT|Bearer|ProviderContext" --in conductor/tracks \
+mpg "auth|JWT|Bearer|ProviderContext" --in conductor/tracks \
   --effort scan --clip 30 --sort recent --window-curve log \
   --max-tokens 2000 --format llm > auth-compaction.md
 
 # Quick recon
-mdg "auth" --in . --effort quick --max-nodes 5
+mpg "auth" --in . --effort quick --max-nodes 5
 
 # Deep grounding for a final answer
-mdg "session" --in src/auth/ --effort deep --max-tokens 16000
+mpg "session" --in src/auth/ --effort deep --max-tokens 16000
 
 # Stash + tag + TTL
-mdg "TODO" --in src/auth/ --mp-stash auth-todos "Auth TODOs" \
+mpg "TODO" --in src/auth/ --mp-stash auth-todos "Auth TODOs" \
   --mp-tag auth --mp-tag p0 --mp-ttl 7d
 
 # Compose two stashes, re-search across their union
-mdg "error" --mp-compose auth-todos perf-hotspots
+mpg "error" --mp-compose auth-todos perf-hotspots
 
 # Re-search scoped to one stash's files
-mdg "rate.limit" --mp-from auth-todos
+mpg "rate.limit" --mp-from auth-todos
 
 # Link stashes into a graph, then traverse it
-mdg --mp-link auth-todos perf-hotspots depends-on "shared db layer"
-mdg --mp-graph auth-todos 3
+mpg --mp-link auth-todos perf-hotspots depends-on "shared db layer"
+mpg --mp-graph auth-todos 3
 
 # Prune safely
-mdg --mp-prune-older-than 7d --mp-prune-dry-run     # preview
-mdg --mp-prune-older-than 7d                        # commit
+mpg --mp-prune-older-than 7d --mp-prune-dry-run     # preview
+mpg --mp-prune-older-than 7d                        # commit
 
 # Use an isolated palace for one task
-MDG_MIND_PALACE=./.mdg/task-42.json mdg "TODO" --in src/ --mp-stash t42 "..."
+MPG_MIND_PALACE=./.mpg/task-42.json mpg "TODO" --in src/ --mp-stash t42 "..."
 
 # Programmatic JSON for a harness
-mdg "TODO" --in src/ --format json --page 1 --page-size 5
+mpg "TODO" --in src/ --format json --page 1 --page-size 5
 ```
 
 ### Exit codes
@@ -232,7 +232,7 @@ Most context tools are file-centric (`@filename`) or line-centric
 - Without a node cap, a single regex can flood the context with thousands
   of hits.
 
-`mdg` fixes this:
+`mpg` fixes this:
 
 | Knob | What it does |
 | :--- | :--- |
@@ -254,64 +254,64 @@ snippet came from.
 Requires [Node 20+](https://nodejs.org) and [ripgrep](https://github.com/BurntSushi/ripgrep).
 
 ```bash
-npm install -g mdg-cli
+npm install -g mpg-cli
 # or from source:
-git clone https://github.com/JadeZaher/mdg.git
-cd mdg && npm install && npm run build && npm link
+git clone https://github.com/JadeZaher/mind-palace-graph.git
+cd mind-palace-graph && npm install && npm run build && npm link
 ```
 
-For Claude / Gemini / coding agents: load `skills/mdg-context/SKILL.md`
+For Claude / Gemini / coding agents: load `skills/mpg-context/SKILL.md`
 into your system prompt or tool descriptions. It provides a decision tree
 for effort levels, mind palace patterns, pagination, and error recovery.
 
 Verify:
 
 ```bash
-mdg --version
-mdg --help
+mpg --version
+mpg --help
 ```
 
 ## Quickstart
 
 ```bash
 # Find TODOs in src/, with 500 tokens of context, up to 20 nodes
-mdg "TODO" --in src/ --max-nodes 20
+mpg "TODO" --in src/ --max-nodes 20
 
 # Multiple paths in one flag (greedy, like git add or curl)
-mdg "TODO" --in src/ test/ docs/
+mpg "TODO" --in src/ test/ docs/
 
 # Trailing positional paths (rg-style)
-mdg "TODO" src/ test/
+mpg "TODO" src/ test/
 
 # Directory: recurses into all files automatically
-mdg "TODO" --in src/auth/
+mpg "TODO" --in src/auth/
 
 # Read path list from a file (one per line, # comments allowed)
-mdg "TODO" --in @filelist.txt
+mpg "TODO" --in @filelist.txt
 
 # Read path list from stdin
-echo -e "src/\ntest/" | mdg "TODO" --in @-
+echo -e "src/\ntest/" | mpg "TODO" --in @-
 
 # Comma-separated paths
-mdg "TODO" --in src/,test/,docs/
+mpg "TODO" --in src/,test/,docs/
 
 # Quick recon: narrow context, 5 nodes
-mdg "auth" --in . --effort quick --max-nodes 5
+mpg "auth" --in . --effort quick --max-nodes 5
 
 # Deep dive: wide context, capped at 16k tokens
-mdg "session" --in src/auth/ --effort deep --max-tokens 16000
+mpg "session" --in src/auth/ --effort deep --max-tokens 16000
 
 # Search the output of a command
-mdg "error" --cmd "git log --oneline -100"
+mpg "error" --cmd "git log --oneline -100"
 
 # Pipe content in
-cat README.md | mdg "install"
+cat README.md | mpg "install"
 
 # JSON for programmatic harness integration
-mdg "TODO" --in src/ --format json
+mpg "TODO" --in src/ --format json
 
 # Markdown for pasting into a doc or chat
-mdg "TODO" --in src/ --format markdown
+mpg "TODO" --in src/ --format markdown
 ```
 
 The `--in` flag is greedy: it consumes every non-flag argument that
@@ -325,7 +325,7 @@ The default. Designed to be both human-readable and directly consumable
 by an LLM harness:
 
 ```text
-<mdg result pattern="TODO" nodes=4 tokens=~566 effort=normal strategy=fill>
+<mpg result pattern="TODO" nodes=4 tokens=~566 effort=normal strategy=fill>
 
 --- NODE 1 of 4 | src/auth/login.ts:8 | ~196 tokens ---
   1    import { User } from './types';
@@ -350,10 +350,10 @@ by an LLM harness:
 
 --- TOTAL ---
 4 nodes | ~566 tokens | 3 sources | 30ms
-</mdg result>
+</mpg result>
 ```
 
-An LLM can paste the entire `<mdg result>...</mdg result>` block into its
+An LLM can paste the entire `<mpg result>...</mpg result>` block into its
 context and immediately know:
 
 - The pattern being searched (`pattern="TODO"`)
@@ -372,7 +372,7 @@ context and immediately know:
 
 ## Token estimation
 
-`mdg` uses a simple `chars/4` heuristic for token estimation. This is
+`mpg` uses a simple `chars/4` heuristic for token estimation. This is
 fast and dependency-free, and accurate enough to make *budgeting*
 decisions (sizing context windows, capping output). It is not a substitute
 for a real tokenizer when billing accuracy matters.
@@ -410,39 +410,39 @@ pass `--mp-replace` to overwrite. Tag stashes with `--mp-tag <t>`
 
 ### Storage
 
-A palace is a JSON file. Default location: `./.mdg/mind-palace.json`
+A palace is a JSON file. Default location: `./.mpg/mind-palace.json`
 (project-scoped). The LLM can have **multiple isolated palaces** by
 pointing `--mp-path <file>` at a different file — one palace per task
-or per session. Override at runtime with `MDG_MIND_PALACE=<file>`.
+or per session. Override at runtime with `MPG_MIND_PALACE=<file>`.
 
 ### Example: multi-step investigation
 
 ```bash
 # 1. The LLM starts by stashing "auth" issues
-mdg "TODO" --in src/auth/ --mp-stash auth-issues "Auth TODOs to fix" \
+mpg "TODO" --in src/auth/ --mp-stash auth-issues "Auth TODOs to fix" \
   --mp-tag auth --mp-tag p0
 
 # 2. Then "performance" hotspots from a different search
-mdg "performance\|slow\|TODO" --in src/ --effort deep \
+mpg "performance\|slow\|TODO" --in src/ --effort deep \
   --mp-stash perf-hotspots "Performance concerns" --mp-tag perf
 
 # 3. The LLM wants to find files involved in BOTH: compose them
-mdg "TODO" --mp-compose auth-issues perf-hotspots
+mpg "TODO" --mp-compose auth-issues perf-hotspots
 
 # 4. The LLM wants to re-search "rate" but only in files that had TODOs
-mdg "rate.limit" --mp-from auth-issues
+mpg "rate.limit" --mp-from auth-issues
 
 # 5. The LLM is done with auth-issues, frees the slot
-mdg --mp-drop auth-issues
+mpg --mp-drop auth-issues
 ```
 
-The mind palace is **persistent** across `mdg` invocations within the
+The mind palace is **persistent** across `mpg` invocations within the
 same project (the JSON file lives on disk) but **logical** — a fresh
 palace can be created instantly by pointing `--mp-path` elsewhere.
 
 ### Pruning & TTL
 
-The palace can grow unbounded. mdg provides several ways to prune:
+The palace can grow unbounded. mpg provides several ways to prune:
 
 | Prune operation | CLI flag |
 | :--- | :--- |
@@ -457,7 +457,7 @@ The palace can grow unbounded. mdg provides several ways to prune:
 TTL stashes auto-expire:
 
 ```bash
-mdg "debug_stmt" --in src/ --mp-stash temp-findings "Temp" \
+mpg "debug_stmt" --in src/ --mp-stash temp-findings "Temp" \
   --mp-ttl 2h --mp-tag temp
 ```
 
@@ -465,26 +465,26 @@ Relative timestamps are shown in all listings (`just now`, `3m ago`, `2d ago`).
 
 ## Pagination
 
-For finer-grained traversal of large result sets, `mdg` supports
+For finer-grained traversal of large result sets, `mpg` supports
 opt-in pagination. The LLM can page through nodes in a search, stashes
 in `--mp-list`, or nodes within a stash in `--mp-get`.
 
 ```bash
 # Page through a large search result
-mdg "TODO" --in src/ --page 1 --page-size 5
-mdg "TODO" --in src/ --page 2 --page-size 5
+mpg "TODO" --in src/ --page 1 --page-size 5
+mpg "TODO" --in src/ --page 2 --page-size 5
 
 # Browse a large mind palace 20 stashes at a time
-mdg --mp-list --page 1 --page-size 20
+mpg --mp-list --page 1 --page-size 20
 
 # Browse a stash's nodes 5 at a time
-mdg --mp-get auth-issues --page 2 --page-size 5
+mpg --mp-get auth-issues --page 2 --page-size 5
 ```
 
 The LLM format annotates the result with pagination metadata:
 
 ```text
-<mdg result pattern="TODO" nodes=6 tokens=~816 effort=normal
+<mpg result pattern="TODO" nodes=6 tokens=~816 effort=normal
        page=1 of 3 page_size=2 total_items=6>
 ```
 
@@ -510,11 +510,11 @@ by default for backwards compatibility; the LLM harness should pass
 
 ## Programmatic API
 
-For TS/Node harnesses that prefer to embed `mdg` rather than shell
-out, the `mdg` package exports a programmatic API:
+For TS/Node harnesses that prefer to embed `mpg` rather than shell
+out, the `mpg` package exports a programmatic API:
 
 ```ts
-import { search, stash, listStashes, toolDefinition } from "mdg";
+import { search, stash, listStashes, toolDefinition } from "mpg-cli";
 
 const result = await search({
   pattern: "TODO",
@@ -535,7 +535,7 @@ await stash(result, {
 const all = listStashes();
 
 // Expose to OpenAI / Anthropic function calling:
-openai.tools.create({ name: "mdg", ...toolDefinition });
+openai.tools.create({ name: "mpg", ...toolDefinition });
 ```
 
 The API mirrors the CLI 1:1 — every flag has a corresponding option.
@@ -553,7 +553,7 @@ The API mirrors the CLI 1:1 — every flag has a corresponding option.
 | `--in src/,test/,docs/` | Comma-separated paths |
 | `--in @list.txt`        | Read paths from a file (one per line, `#` comments) |
 | `--in @-`               | Read paths from stdin (one per line, `#` comments) |
-| `mdg PATTERN path/ ...` | Trailing positionals also act as paths (rg-style) |
+| `mpg PATTERN path/ ...` | Trailing positionals also act as paths (rg-style) |
 
 ## Architecture
 
@@ -573,7 +573,7 @@ src/
   index.ts         orchestrator (entry point)
 ```
 
-`mdg` does not reimplement grep. It shells out to `rg --json` for the
+`mpg` does not reimplement grep. It shells out to `rg --json` for the
 actual search, which is the fastest, most correct regex engine available
 and provides structured match data. Everything else — node building,
 context sizing, output formatting — is in-process TypeScript.

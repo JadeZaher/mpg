@@ -93,13 +93,13 @@ function formatMarkdown(result: Result, color: boolean): string {
  *
  * Layout:
  *
- *   <mdg result pattern="X" nodes=3 tokens=1234 effort=normal strategy=fill>
+ *   <mpg result pattern="X" nodes=3 tokens=1234 effort=normal strategy=fill>
  *   --- NODE 1 of 3 | src/file.ts:42 | ~380 tokens ---
  *   <code block with line numbers, match highlighted with >> prefix>
  *   --- NODE 2 of 3 | ...
  *   --- TOTAL ---
  *   3 nodes | ~1234 tokens | 2 sources | 234ms
- *   </mdg result>
+ *   </mpg result>
  */
 function formatLlm(result: Result, color: boolean): string {
   const out: string[] = [];
@@ -114,7 +114,7 @@ function formatLlm(result: Result, color: boolean): string {
     `strategy=${result.strategy}`,
     paginationAnnotation(result.pagination),
   ].filter(Boolean).join(" ");
-  out.push(`<mdg result ${header.trim()}>`);
+  out.push(`<mpg result ${header.trim()}>`);
 
   for (const node of result.nodes) {
     out.push("");
@@ -173,7 +173,7 @@ function formatLlm(result: Result, color: boolean): string {
     const nav = result.pagination.has_next ? " (more pages available — pass --page N)" : "";
     out.push(colorize(color, DIM, paginationTextNote(result.pagination) + nav));
   }
-  out.push("</mdg result>");
+  out.push("</mpg result>");
   return out.join("\n");
 }
 

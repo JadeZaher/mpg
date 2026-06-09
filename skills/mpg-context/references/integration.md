@@ -1,6 +1,6 @@
-# mdg Integration Paths
+# mpg Integration Paths
 
-mdg works through three different surfaces. Pick the one that matches
+mpg works through three different surfaces. Pick the one that matches
 how your agent calls tools.
 
 | Path | Best for | Cost |
@@ -11,13 +11,13 @@ how your agent calls tools.
 
 ## MCP server
 
-mdg ships an MCP server that exposes the five core tools over stdio.
+mpg ships an MCP server that exposes the five core tools over stdio.
 No network ports, no extra config beyond the launch command.
 
 ```json
 {
   "mcpServers": {
-    "mdg": {
+    "mpg": {
       "command": "node",
       "args": ["<path-to-global-install>/dist/mcp-server.js"]
     }
@@ -29,20 +29,20 @@ For Claude Code, register via the CLI (recommended, user scope makes it
 available across all projects):
 
 ```bash
-claude mcp add --scope user mdg -- node "<global-install>/dist/mcp-server.js"
+claude mcp add --scope user mpg -- node "<global-install>/dist/mcp-server.js"
 ```
 
-The exposed tools are `mdg_search`, `mdg_stash`, `mdg_list_stashes`,
-`mdg_get_stash`, `mdg_drop_stash`. The wider mind-palace surface
+The exposed tools are `mpg_search`, `mpg_stash`, `mpg_list_stashes`,
+`mpg_get_stash`, `mpg_drop_stash`. The wider mind-palace surface
 (relationships, prune, intersect, etc.) is **not** available through
 MCP today — drop to CLI for those.
 
 ## CLI shell-out
 
-Any agent that can run a shell command can use mdg directly:
+Any agent that can run a shell command can use mpg directly:
 
 ```bash
-mdg "TODO" --in src/ --effort quick --format json
+mpg "TODO" --in src/ --effort quick --format json
 ```
 
 The `--format json` output is designed for machine consumption: it
@@ -53,20 +53,20 @@ When to prefer CLI over MCP:
 
 - You need a flag that isn't exposed as an MCP tool (relationships,
   prune, intersect, except, TTL).
-- You're chaining mdg with other shell tools (e.g.
-  `mdg "errors" --cmd "git log -100" --mp-stash recent`).
+- You're chaining mpg with other shell tools (e.g.
+  `mpg "errors" --cmd "git log -100" --mp-stash recent`).
 - You want a quick recon and the MCP roundtrip is overkill.
 
 When to prefer MCP over CLI:
 
 - You want the tool name visible to the model in its tool list (helps
   with tool selection).
-- You're running in a host that doesn't auto-allow `mdg` in Bash
+- You're running in a host that doesn't auto-allow `mpg` in Bash
   permissions (MCP bypasses Bash permission prompts).
 
 ## Programmatic import
 
-For TS/Node agents that embed mdg directly:
+For TS/Node agents that embed mpg directly:
 
 ```ts
 import {
@@ -77,7 +77,7 @@ import {
   dropStash,
   claudeTools,
   geminiTools,
-} from "mdg-cli";
+} from "mpg-cli";
 
 // Run a search
 const result = await search({

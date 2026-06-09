@@ -1,6 +1,6 @@
 # Anti-patterns
 
-What NOT to do with mdg, and why.
+What NOT to do with mpg, and why.
 
 ## Search
 
@@ -9,20 +9,20 @@ What NOT to do with mdg, and why.
 nodes) for the final answer-grounding pass, not initial recon.
 
 **Don't search the same pattern twice without stashing.**
-If you'll need a pattern more than once, `mdg_stash` it the first
+If you'll need a pattern more than once, `mpg_stash` it the first
 time. Stash storage is cheap; re-running a search is not.
 
-**Don't use mdg to read a single file.**
-The host's `read` tool is faster and clearer. mdg is for *searching*
+**Don't use mpg to read a single file.**
+The host's `read` tool is faster and clearer. mpg is for *searching*
 across multiple files, not retrieving one.
 
 **Don't forget `page: 1` when paginating.**
-Without an explicit page, mdg returns everything (up to `max_nodes`).
+Without an explicit page, mpg returns everything (up to `max_nodes`).
 For results expected to exceed 10 hits, pass `page: 1, page_size: 5`
 so you can decide whether to keep going.
 
 **Don't omit `--in` for non-trivial searches.**
-With no source, mdg reads stdin or errors out. Always be explicit
+With no source, mpg reads stdin or errors out. Always be explicit
 about where you're searching.
 
 ## Mind palace
@@ -33,7 +33,7 @@ The cost is the stash decision, not the storage.
 
 **Don't reuse stash names across unrelated investigations.**
 A new investigation = a new task = a new palace (`--mp-path` /
-`MDG_MIND_PALACE`) OR a name-prefixed stash. Reusing names silently
+`MPG_MIND_PALACE`) OR a name-prefixed stash. Reusing names silently
 overwrites or merges, which surprises the model later.
 
 **Don't use comma-separated stash names in `compose` without quoting.**
@@ -41,7 +41,7 @@ The shell may split them. Prefer space-separated:
 `--mp-compose auth-todos perf-hotspots`.
 
 **Don't create stashes with names that look like flags.**
-Avoid names like `--help`, `-v`, etc. mdg handles these but the LLM
+Avoid names like `--help`, `-v`, etc. mpg handles these but the LLM
 should not have to disambiguate.
 
 **Don't skip `--mp-prune-dry-run`.**
@@ -56,11 +56,11 @@ single-writer queue. For high-write fan-out, give each agent its own
 palace (Layout A in `multi-agent.md`) and compose at the end.
 
 **Don't ignore a "WARNING — mind palace is corrupt" stderr line.**
-When mdg encounters an unparseable palace it copies the file aside as
+When mpg encounters an unparseable palace it copies the file aside as
 `<palace>.corrupt.<timestamp>`, taints the in-memory copy, and
 **refuses to save** for the rest of that process. If you press on
 without inspecting the backup, the next process will start from a
-real empty palace once `MDG_FORCE_RESET=1` is set — you'll lose every
+real empty palace once `MPG_FORCE_RESET=1` is set — you'll lose every
 stash that wasn't already on disk in a parseable state. Read the
 backup file first; recover by hand-merging or by deleting the
 corrupt original.
@@ -98,11 +98,11 @@ when you actually plan to `--mp-related` or `--mp-graph` later.
 ## Sources
 
 **Don't pipe gigabyte files to `--cmd` or `--stdin`.**
-mdg buffers in memory (64 MB cap for `--cmd`). For huge corpora, use
+mpg buffers in memory (64 MB cap for `--cmd`). For huge corpora, use
 `--in` with file paths so ripgrep streams.
 
 **Don't `--url` against SPA-rendered pages.**
-mdg fetches raw HTML — no JS execution. SPAs return empty shells.
+mpg fetches raw HTML — no JS execution. SPAs return empty shells.
 Use a real HTTP client + render step upstream if you need it.
 
 **Don't combine `--cmd` and `--stdin` for the same content.**
@@ -115,7 +115,7 @@ Pick one. Combining them is legal but confusing — they coexist for
 It's designed for the model to read. For machine consumption use
 `--format json`.
 
-**Don't strip the `<mdg result ...>` wrapper before showing the
+**Don't strip the `<mpg result ...>` wrapper before showing the
 result to the model.**
 The header carries the pattern, effort, status, pagination state, and
 token budget — load-bearing for the model's reasoning. Keep it.
@@ -125,7 +125,7 @@ token budget — load-bearing for the model's reasoning. Keep it.
 **Don't register the MCP server at project scope when you want it
 everywhere.**
 Use `--scope user` so it's available across all projects:
-`claude mcp add --scope user mdg -- node <path>`.
+`claude mcp add --scope user mpg -- node <path>`.
 
 **Don't shell out from inside an MCP host for the five core tools.**
 That's what the MCP server exists for. Shell-out only for the wider

@@ -2,7 +2,7 @@
  * Meso benchmark: recall / precision / token cost across effort presets.
  *
  * For each (query, effort) cell in the matrix:
- *   - run mdg with --format json on the synthetic corpus
+ *   - run mpg with --format json on the synthetic corpus
  *   - compare returned (file, line) tuples to ground truth
  *   - record recall, precision, F1, tokens, wall-clock
  *

@@ -15,7 +15,7 @@
  *   --mp-get <name>              inspect: full contents of a slot
  *   --mp-drop <name>             destroy: free a slot
  *
- * Storage: a JSON file (default `./.mdg/mind-palace.json`, project-
+ * Storage: a JSON file (default `./.mpg/mind-palace.json`, project-
  * scoped). Use `--mp-path` to point at a different file for isolated
  * sessions. The LLM can have multiple palaces (one per task) just by
  * pointing `--mp-path` at different files.
@@ -38,7 +38,7 @@ import type { Node, Source } from "./types.js";
 
 export const PALACE_VERSION = 1;
 export const DEFAULT_PALACE_FILENAME = "mind-palace.json";
-export const DEFAULT_PALACE_DIR = ".mdg";
+export const DEFAULT_PALACE_DIR = ".mpg";
 
 /** A stashed collection of nodes plus the metadata of the search that produced them. */
 export interface Stash {
@@ -112,11 +112,11 @@ export function findExistingPalace(start: string = process.cwd()): string | null
 }
 
 /** Resolve the default palace path: env override, then git root, then
- *  nearest existing palace walking up, then CWD/.mdg/.
+ *  nearest existing palace walking up, then CWD/.mpg/.
  *  This ensures the mind palace is project-scoped by default — even
  *  when invoked from a deep subdirectory. */
 export function defaultPalacePath(): string {
-  const envPath = process.env.MDG_MIND_PALACE;
+  const envPath = process.env.MPG_MIND_PALACE;
   if (envPath) return resolvePath(envPath);
   // Try the git root first (most reliable project boundary).
   const gitRoot = findGitRoot();
@@ -142,7 +142,7 @@ function findGitRoot(start: string = process.cwd()): string | null {
 }
 
 /**
- * `loadPalace` is called from many places (every `mdg` invocation that
+ * `loadPalace` is called from many places (every `mpg` invocation that
  * touches the palace). Two pathologies we must avoid:
  *
  *   1. Returning `emptyPalace()` on JSON.parse failure and letting the
@@ -154,9 +154,9 @@ function findGitRoot(start: string = process.cwd()): string | null {
  * stderr warning, and refuse to clobber on subsequent saves *for the
  * lifetime of this process* by marking the in-memory palace tainted.
  * The caller still gets an empty palace so reads (--mp-list etc.)
- * work, but any save will throw unless MDG_FORCE_RESET=1.
+ * work, but any save will throw unless MPG_FORCE_RESET=1.
  */
-const TAINTED = Symbol.for("mdg.palace.tainted");
+const TAINTED = Symbol.for("mpg.palace.tainted");
 /**
  * Full snapshot of the palace contents at load time. `savePalace` uses
  * it to compute the **diff** this process made (added X / modified Y /
@@ -171,7 +171,7 @@ const TAINTED = Symbol.for("mdg.palace.tainted");
  * NOT drop X, or (b) A explicitly dropped X — we MUST drop it. The
  * snapshot tells us which.
  */
-const SNAPSHOT = Symbol.for("mdg.palace.snapshot");
+const SNAPSHOT = Symbol.for("mpg.palace.snapshot");
 
 interface MaybeTaintedPalace extends Palace {
   [TAINTED]?: boolean;
@@ -191,7 +191,7 @@ export function loadPalace(path: string): Palace {
     raw = readFileSync(path, "utf8");
   } catch (err) {
     process.stderr.write(
-      `mdg: cannot read mind palace at ${path}: ${(err as Error).message}\n`,
+      `mpg: cannot read mind palace at ${path}: ${(err as Error).message}\n`,
     );
     const tainted = emptyPalace() as MaybeTaintedPalace;
     tainted[TAINTED] = true;
@@ -223,10 +223,10 @@ export function loadPalace(path: string): Palace {
       writeFileSync(backupPath, raw, "utf8");
     } catch { /* if even the backup fails, we still need to warn */ }
     process.stderr.write(
-      `mdg: WARNING — mind palace at ${path} is corrupt ` +
+      `mpg: WARNING — mind palace at ${path} is corrupt ` +
       `(${(err as Error).message}). Saved a copy to ${backupPath}. ` +
       `Saves will refuse to overwrite this file unless ` +
-      `MDG_FORCE_RESET=1 is set. Fix the file or move it aside.\n`,
+      `MPG_FORCE_RESET=1 is set. Fix the file or move it aside.\n`,
     );
     const tainted = emptyPalace() as MaybeTaintedPalace;
     tainted[TAINTED] = true;
@@ -270,9 +270,9 @@ function acquireLock(path: string): { release: () => void } {
       } catch { /* lock disappeared between EEXIST and stat — retry */ }
       if (Date.now() - start > LOCK_MAX_WAIT_MS) {
         throw new Error(
-          `mdg: could not acquire lock on ${lockPath} after ${LOCK_MAX_WAIT_MS}ms. ` +
-          `Another mdg process may be writing the palace, or a stale lock exists. ` +
-          `Delete ${lockPath} manually if no other mdg is running.`,
+          `mpg: could not acquire lock on ${lockPath} after ${LOCK_MAX_WAIT_MS}ms. ` +
+          `Another mpg process may be writing the palace, or a stale lock exists. ` +
+          `Delete ${lockPath} manually if no other mpg is running.`,
         );
       }
       // Exponential-ish backoff with jitter.
@@ -285,12 +285,12 @@ function acquireLock(path: string): { release: () => void } {
 }
 
 export function savePalace(path: string, palace: Palace): void {
-  if ((palace as MaybeTaintedPalace)[TAINTED] && !process.env.MDG_FORCE_RESET) {
+  if ((palace as MaybeTaintedPalace)[TAINTED] && !process.env.MPG_FORCE_RESET) {
     throw new Error(
-      `mdg: refusing to save over a tainted palace at ${path}. ` +
+      `mpg: refusing to save over a tainted palace at ${path}. ` +
       `The on-disk file was unreadable or corrupt; saving now would ` +
       `destroy whatever data was there. Inspect the *.corrupt.* backup, ` +
-      `then either fix the file or set MDG_FORCE_RESET=1 to overwrite.`,
+      `then either fix the file or set MPG_FORCE_RESET=1 to overwrite.`,
     );
   }
   const dir = dirname(path);
@@ -362,7 +362,7 @@ export function savePalace(path: string, palace: Palace): void {
         // The on-disk file went corrupt between load and save. We
         // hold the lock; fall back to our in-memory copy and warn.
         process.stderr.write(
-          `mdg: on-disk palace at ${path} became unparseable between ` +
+          `mpg: on-disk palace at ${path} became unparseable between ` +
           `load and save; overwriting with in-memory copy.\n`,
         );
         merged = { version: palace.version, stashes: { ...palace.stashes } };
@@ -560,7 +560,7 @@ export function composeToSources(palace: Palace, names: string[]): Source[] {
   if (missing.length > 0) {
     throw new Error(
       `Unknown stashes: ${missing.join(", ")}. ` +
-      `Run 'mdg --mp-list' to see available stashes.`,
+      `Run 'mpg --mp-list' to see available stashes.`,
     );
   }
   return out;
@@ -571,7 +571,7 @@ export function exceptToSources(palace: Palace, a: string, b: string[]): Source[
   const base = palace.stashes[a];
   if (!base) {
     throw new Error(
-      `Unknown stash: ${a}. Run 'mdg --mp-list' to see available stashes.`,
+      `Unknown stash: ${a}. Run 'mpg --mp-list' to see available stashes.`,
     );
   }
   const excludeIds = new Set<string>();
@@ -579,7 +579,7 @@ export function exceptToSources(palace: Palace, a: string, b: string[]): Source[
     const stash = palace.stashes[name];
     if (!stash) {
       throw new Error(
-        `Unknown stash: ${name}. Run 'mdg --mp-list' to see available stashes.`,
+        `Unknown stash: ${name}. Run 'mpg --mp-list' to see available stashes.`,
       );
     }
     for (const s of stashToSources(stash)) excludeIds.add(s.id);
@@ -603,7 +603,7 @@ export function intersectToSources(palace: Palace, names: string[]): Source[] {
     const stash = palace.stashes[name];
     if (!stash) {
       throw new Error(
-        `Unknown stash: ${name}. Run 'mdg --mp-list' to see available stashes.`,
+        `Unknown stash: ${name}. Run 'mpg --mp-list' to see available stashes.`,
       );
     }
     fileSets.push(new Set(stashToSources(stash).map((s) => s.id)));

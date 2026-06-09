@@ -1,7 +1,7 @@
 /**
- * Smoke test for mdg.
+ * Smoke test for mpg.
  *
- * Spins up a temp directory with fixture files, runs mdg against
+ * Spins up a temp directory with fixture files, runs mpg against
  * them via the built CLI, and asserts the output is well-formed.
  *
  * Run with: npm test (uses tsx so we don't need to rebuild)
@@ -25,7 +25,7 @@ function assert(condition: boolean, msg: string) {
   }
 }
 
-function runMdg(args: string[], cwd?: string): { stdout: string; stderr: string; code: number } {
+function runMpg(args: string[], cwd?: string): { stdout: string; stderr: string; code: number } {
   const cliPath = resolve(process.cwd(), "dist/index.js");
   const r = spawnSync("node", [cliPath, ...args], {
     encoding: "utf8",
@@ -40,7 +40,7 @@ function runMdg(args: string[], cwd?: string): { stdout: string; stderr: string;
 }
 
 function makeFixtures(): string {
-  const dir = mkdtempSync(join(tmpdir(), "mdg-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "mpg-test-"));
   writeFileSync(join(dir, "auth.ts"), `
 import { User } from './types';
 import { db } from './db';
@@ -90,7 +90,7 @@ This module handles authentication and session management.
 }
 
 function main() {
-  process.stdout.write("mdg smoke tests\n");
+  process.stdout.write("mpg smoke tests\n");
   process.stdout.write("================\n\n");
 
   const fixtures = makeFixtures();
@@ -99,19 +99,19 @@ function main() {
   // Test 1: basic search with file source.
   process.stdout.write("Test 1: search a single file\n");
   {
-    const r = runMdg(["TODO", "--in", join(fixtures, "auth.ts"), "--no-color"]);
+    const r = runMpg(["TODO", "--in", join(fixtures, "auth.ts"), "--no-color"]);
     assert(r.code === 0, `exit code 0 (got ${r.code})`);
-    assert(r.stdout.includes("<mdg result"), "has mdg result header");
+    assert(r.stdout.includes("<mpg result"), "has mpg result header");
     assert(r.stdout.includes("NODE 1 of"), "has NODE marker");
     assert(r.stdout.includes("TODO"), "contains the matched text");
-    assert(r.stdout.includes("</mdg result>"), "has closing tag");
+    assert(r.stdout.includes("</mpg result>"), "has closing tag");
     assert(r.stdout.includes("--- TOTAL ---"), "has total footer");
   }
 
   // Test 2: multi-file glob.
   process.stdout.write("\nTest 2: glob multiple files\n");
   {
-    const r = runMdg(["TODO", "--in", join(fixtures, "*.ts"), "--no-color", "--max-nodes", "10"]);
+    const r = runMpg(["TODO", "--in", join(fixtures, "*.ts"), "--no-color", "--max-nodes", "10"]);
     assert(r.code === 0, `exit code 0 (got ${r.code})`);
     assert(r.stdout.includes("auth.ts"), "includes auth.ts");
     assert(r.stdout.includes("session.ts"), "includes session.ts");
@@ -123,7 +123,7 @@ function main() {
   // Test 3: effort preset.
   process.stdout.write("\nTest 3: quick effort = narrow context\n");
   {
-    const r = runMdg(["TODO", "--in", join(fixtures, "*.ts"), "--no-color", "--effort", "quick", "--format", "json"]);
+    const r = runMpg(["TODO", "--in", join(fixtures, "*.ts"), "--no-color", "--effort", "quick", "--format", "json"]);
     assert(r.code === 0, `exit code 0 (got ${r.code})`);
     const json = JSON.parse(r.stdout);
     assert(json.effort === "quick", `effort = quick (got ${json.effort})`);
@@ -133,7 +133,7 @@ function main() {
   // Test 4: max-tokens budget truncates.
   process.stdout.write("\nTest 4: max-tokens budget\n");
   {
-    const r = runMdg([
+    const r = runMpg([
       "TODO",
       "--in", join(fixtures, "*.ts"),
       "--no-color",
@@ -149,7 +149,7 @@ function main() {
   // Test 5: max-nodes cap.
   process.stdout.write("\nTest 5: max-nodes cap\n");
   {
-    const r = runMdg([
+    const r = runMpg([
       "TODO",
       "--in", join(fixtures, "*.ts"),
       "--no-color",
@@ -164,7 +164,7 @@ function main() {
   // Test 6: command source.
   process.stdout.write("\nTest 6: command source\n");
   {
-    const r = runMdg([
+    const r = runMpg([
       "error",
       "--cmd", `echo "this is an error message" && echo "another error line"`,
       "--no-color",
@@ -192,7 +192,7 @@ function main() {
   // Test 8: text format.
   process.stdout.write("\nTest 8: text format\n");
   {
-    const r = runMdg(["TODO", "--in", join(fixtures, "auth.ts"), "--no-color", "--format", "text"]);
+    const r = runMpg(["TODO", "--in", join(fixtures, "auth.ts"), "--no-color", "--format", "text"]);
     assert(r.code === 0, `exit code 0 (got ${r.code})`);
     assert(/^\d+\s+/m.test(r.stdout), "has line-numbered output");
   }
@@ -200,7 +200,7 @@ function main() {
   // Test 9: markdown format.
   process.stdout.write("\nTest 9: markdown format\n");
   {
-    const r = runMdg(["TODO", "--in", join(fixtures, "auth.ts"), "--no-color", "--format", "markdown"]);
+    const r = runMpg(["TODO", "--in", join(fixtures, "auth.ts"), "--no-color", "--format", "markdown"]);
     assert(r.code === 0, `exit code 0 (got ${r.code})`);
     assert(r.stdout.includes("```"), "has code blocks");
     assert(r.stdout.includes("###"), "has h3 headers");
@@ -209,7 +209,7 @@ function main() {
   // Test 10: no matches returns exit 1.
   process.stdout.write("\nTest 10: no matches = exit 1\n");
   {
-    const r = runMdg(["XYZZY_NEVER_MATCHES", "--in", join(fixtures, "*.ts"), "--no-color"]);
+    const r = runMpg(["XYZZY_NEVER_MATCHES", "--in", join(fixtures, "*.ts"), "--no-color"]);
     assert(r.code === 1, `exit code 1 (got ${r.code})`);
   }
 
@@ -218,7 +218,7 @@ function main() {
   {
     // Two calls with same --max-tokens should produce ~same total regardless
     // of whether the file has long lines or short lines.
-    const r = runMdg([
+    const r = runMpg([
       "TODO",
       "--in", join(fixtures, "auth.ts"),
       "--no-color",
@@ -236,7 +236,7 @@ function main() {
   // Test 12: multiple --in paths.
   process.stdout.write("\nTest 12: multiple --in paths\n");
   {
-    const r = runMdg([
+    const r = runMpg([
       "TODO",
       "--in", join(fixtures, "auth.ts"),
       "--in", join(fixtures, "session.ts"),
@@ -251,7 +251,7 @@ function main() {
   // Test 13: case-insensitive search.
   process.stdout.write("\nTest 13: case-insensitive search\n");
   {
-    const r = runMdg([
+    const r = runMpg([
       "todo",
       "--in", join(fixtures, "auth.ts"),
       "--no-color",
@@ -266,7 +266,7 @@ function main() {
   // Test 14: directory as --in (recurses).
   process.stdout.write("\nTest 14: directory input recurses\n");
   {
-    const r = runMdg([
+    const r = runMpg([
       "TODO",
       "--in", fixtures,
       "--no-color",
@@ -283,7 +283,7 @@ function main() {
   {
     // Add a file with "TODO" and "todosaurus" to confirm --word filters.
     writeFileSync(join(fixtures, "word.ts"), `// TODO this is a todo\n// todosaurus is not a todo\n`);
-    const r = runMdg([
+    const r = runMpg([
       "TODO",
       "--in", join(fixtures, "word.ts"),
       "--no-color",
@@ -298,7 +298,7 @@ function main() {
   // Test 16: LLM format includes match highlighting.
   process.stdout.write("\nTest 16: LLM format highlights matches\n");
   {
-    const r = runMdg([
+    const r = runMpg([
       "TODO",
       "--in", join(fixtures, "auth.ts"),
       "--no-color",
@@ -319,7 +319,7 @@ function main() {
     for (let i = 0; i < 200; i++) content += `// padding line ${i + 200}\n`;
     writeFileSync(big, content);
 
-    const rSmall = runMdg([
+    const rSmall = runMpg([
       "TODO",
       "--in", big,
       "--no-color",
@@ -327,7 +327,7 @@ function main() {
       "--before", "50",
       "--after", "50",
     ]);
-    const rLarge = runMdg([
+    const rLarge = runMpg([
       "TODO",
       "--in", big,
       "--no-color",
@@ -344,7 +344,7 @@ function main() {
   // Test 18: multiple paths in one --in (greedy).
   process.stdout.write("\nTest 18: multiple paths in one --in\n");
   {
-    const r = runMdg([
+    const r = runMpg([
       "TODO",
       "--in", join(fixtures, "auth.ts"), join(fixtures, "session.ts"),
       "--no-color",
@@ -359,7 +359,7 @@ function main() {
   // Test 19: trailing positional paths (rg-style).
   process.stdout.write("\nTest 19: trailing positional paths\n");
   {
-    const r = runMdg([
+    const r = runMpg([
       "TODO",
       "--no-color",
       "--format", "json",
@@ -380,7 +380,7 @@ function main() {
       "# a comment line, should be skipped",
       "",
     ].join("\n"));
-    const r = runMdg([
+    const r = runMpg([
       "TODO",
       "--in", "@" + listPath,
       "--no-color",
@@ -412,7 +412,7 @@ function main() {
   // Test 22: comma-separated paths in one --in arg.
   process.stdout.write("\nTest 22: comma-separated paths\n");
   {
-    const r = runMdg([
+    const r = runMpg([
       "TODO",
       "--in", `${join(fixtures, "auth.ts")},${join(fixtures, "session.ts")}`,
       "--no-color",
@@ -426,7 +426,7 @@ function main() {
   // Test 23: directory + file mix in one --in.
   process.stdout.write("\nTest 23: mix of directory and file\n");
   {
-    const r = runMdg([
+    const r = runMpg([
       "TODO",
       "--in", fixtures, join(fixtures, "auth.ts"),
       "--no-color",
@@ -442,10 +442,10 @@ function main() {
   // Use a unique palace file in the fixtures dir so we don't pollute.
   const palacePath = join(fixtures, "test-palace.json");
   const cliPath = resolve(process.cwd(), "dist/index.js");
-  function runMdgPalace(args: string[]): { stdout: string; stderr: string; code: number } {
+  function runMpgPalace(args: string[]): { stdout: string; stderr: string; code: number } {
     const r = spawnSync("node", [cliPath, ...args], {
       encoding: "utf8",
-      env: { ...process.env, MDG_MIND_PALACE: palacePath },
+      env: { ...process.env, MPG_MIND_PALACE: palacePath },
     });
     return { stdout: r.stdout ?? "", stderr: r.stderr ?? "", code: r.status ?? -1 };
   }
@@ -455,7 +455,7 @@ function main() {
   // Test 24: --mp-stash creates a stash.
   process.stdout.write("\nTest 24: --mp-stash creates a stash\n");
   {
-    const r = runMdgPalace([
+    const r = runMpgPalace([
       "TODO", "--in", join(fixtures, "auth.ts"),
       "--mp-stash", "auth-todos", "Authentication TODOs",
       "--mp-tag", "auth", "--mp-tag", "p0",
@@ -469,7 +469,7 @@ function main() {
   // Test 25: --mp-list shows the stash.
   process.stdout.write("\nTest 25: --mp-list shows the stash\n");
   {
-    const r = runMdgPalace(["--mp-list", "--no-color"]);
+    const r = runMpgPalace(["--mp-list", "--no-color"]);
     assert(r.code === 0, `exit code 0 (got ${r.code})`);
     assert(/STASH auth-todos/.test(r.stdout), "shows the stash name");
     assert(/Authentication TODOs/.test(r.stdout), "shows the note");
@@ -479,7 +479,7 @@ function main() {
   // Test 26: --mp-list with tag filter.
   process.stdout.write("\nTest 26: --mp-list --mp-list-tag filters by tag\n");
   {
-    const r = runMdgPalace(["--mp-list", "--mp-list-tag", "p0", "--no-color"]);
+    const r = runMpgPalace(["--mp-list", "--mp-list-tag", "p0", "--no-color"]);
     assert(r.code === 0, `exit code 0 (got ${r.code})`);
     assert(/auth-todos/.test(r.stdout), "p0 tag matches auth-todos");
   }
@@ -487,7 +487,7 @@ function main() {
   // Test 27: --mp-get card view (default) shows metadata + sources only.
   process.stdout.write("\nTest 27: --mp-get default is card view (no nodes block)\n");
   {
-    const r = runMdgPalace(["--mp-get", "auth-todos", "--no-color"]);
+    const r = runMpgPalace(["--mp-get", "auth-todos", "--no-color"]);
     assert(r.code === 0, `exit code 0 (got ${r.code})`);
     assert(/STASH: auth-todos/.test(r.stdout), "shows stash header");
     assert(/view="card"/.test(r.stdout), "advertises card view");
@@ -499,22 +499,22 @@ function main() {
   // Test 27b: --mp-get --with-nodes (or --full) restores the nodes block.
   process.stdout.write("\nTest 27b: --mp-get --with-nodes shows nodes block\n");
   {
-    const r = runMdgPalace(["--mp-get", "auth-todos", "--with-nodes", "--no-color"]);
+    const r = runMpgPalace(["--mp-get", "auth-todos", "--with-nodes", "--no-color"]);
     assert(r.code === 0, `exit code 0 (got ${r.code})`);
     assert(/view="full"/.test(r.stdout), "advertises full view");
     assert(/--- NODES ---/.test(r.stdout), "full view shows nodes section");
-    const rFull = runMdgPalace(["--mp-get", "auth-todos", "--full", "--no-color"]);
+    const rFull = runMpgPalace(["--mp-get", "auth-todos", "--full", "--no-color"]);
     assert(/view="full"/.test(rFull.stdout), "--full synonym also yields full view");
   }
 
   // Test 28: --mp-from uses stashed files as search target.
   process.stdout.write("\nTest 28: --mp-from uses stashed files\n");
   {
-    runMdgPalace([
+    runMpgPalace([
       "TODO", "--in", join(fixtures, "auth.ts"),
       "--mp-stash", "scope-test", "scope test", "--no-color",
     ]);
-    const r = runMdgPalace(["rate", "--mp-from", "scope-test", "--no-color"]);
+    const r = runMpgPalace(["rate", "--mp-from", "scope-test", "--no-color"]);
     assert(r.code === 0, `exit code 0 (got ${r.code})`);
     assert(r.stdout.includes("rate"), "found 'rate' in scoped search");
     assert(r.stdout.includes("auth.ts"), "scoped to auth.ts");
@@ -523,11 +523,11 @@ function main() {
   // Test 29: --mp-compose searches across multiple stashes.
   process.stdout.write("\nTest 29: --mp-compose across multiple stashes\n");
   {
-    runMdgPalace([
+    runMpgPalace([
       "TODO", "--in", join(fixtures, "session.ts"),
       "--mp-stash", "session-scope", "session scope", "--no-color",
     ]);
-    const r = runMdgPalace([
+    const r = runMpgPalace([
       "TODO", "--mp-compose", "scope-test", "session-scope", "--no-color",
     ]);
     assert(r.code === 0, `exit code 0 (got ${r.code})`);
@@ -538,11 +538,11 @@ function main() {
   // Test 30: --mp-stash is idempotent (merge dedupes).
   process.stdout.write("\nTest 30: --mp-stash merges and dedupes\n");
   {
-    runMdgPalace([
+    runMpgPalace([
       "TODO", "--in", join(fixtures, "auth.ts"),
       "--mp-stash", "auth-todos", "Auth TODOs", "--no-color",
     ]);
-    const r = runMdgPalace([
+    const r = runMpgPalace([
       "TODO", "--in", join(fixtures, "auth.ts"),
       "--mp-stash", "auth-todos", "Auth TODOs (updated)", "--no-color",
     ]);
@@ -553,7 +553,7 @@ function main() {
   // Test 31: --mp-replace overwrites.
   process.stdout.write("\nTest 31: --mp-replace overwrites\n");
   {
-    const r = runMdgPalace([
+    const r = runMpgPalace([
       "TODO", "--in", join(fixtures, "auth.ts"),
       "--mp-stash", "auth-todos", "Replaced note", "--mp-replace", "--no-color",
     ]);
@@ -564,17 +564,17 @@ function main() {
   // Test 32: --mp-drop removes a stash.
   process.stdout.write("\nTest 32: --mp-drop removes a stash\n");
   {
-    const r = runMdgPalace(["--mp-drop", "scope-test"]);
+    const r = runMpgPalace(["--mp-drop", "scope-test"]);
     assert(r.code === 0, `exit code 0 (got ${r.code})`);
     assert(/dropped stash "scope-test"/.test(r.stderr), "dropped confirmation");
-    const r2 = runMdgPalace(["--mp-list", "--no-color"]);
+    const r2 = runMpgPalace(["--mp-list", "--no-color"]);
     assert(!/STASH scope-test/.test(r2.stdout), "scope-test is no longer listed");
   }
 
   // Test 33: --mp-from with missing stash errors.
   process.stdout.write("\nTest 33: --mp-from with missing stash errors\n");
   {
-    const r = runMdgPalace(["TODO", "--mp-from", "nonexistent", "--no-color"]);
+    const r = runMpgPalace(["TODO", "--mp-from", "nonexistent", "--no-color"]);
     assert(r.code === 4, `exit code 4 (got ${r.code})`);
     assert(/Unknown stashes/.test(r.stderr), "reports unknown stash");
   }
@@ -592,7 +592,7 @@ function main() {
     ], { encoding: "utf8" });
     assert((r.status ?? -1) === 0, `exit code 0 (got ${r.status})`);
     assert(existsSync(isolated), "isolated palace created");
-    const r2 = runMdgPalace(["--mp-list", "--no-color"]);
+    const r2 = runMpgPalace(["--mp-list", "--no-color"]);
     assert(!/STASH iso/.test(r2.stdout), "isolated stash is not in main palace");
   }
 
@@ -612,12 +612,12 @@ function main() {
     cliPath, "TODO", "--in", big2,
     "--mp-stash", "many", "30 TODOs",
     "--no-color",
-  ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: bigPalace } });
+  ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: bigPalace } });
 
   function runBig(args: string[]): { stdout: string; stderr: string; code: number } {
     const r = spawnSync("node", [cliPath, ...args], {
       encoding: "utf8",
-      env: { ...process.env, MDG_MIND_PALACE: bigPalace },
+      env: { ...process.env, MPG_MIND_PALACE: bigPalace },
     });
     return { stdout: r.stdout ?? "", stderr: r.stderr ?? "", code: r.status ?? -1 };
   }
@@ -682,7 +682,7 @@ function main() {
       spawnSync("node", [
         cliPath, "TODO", "--in", big2,
         "--mp-stash", `s${i}`, `stash ${i}`, "--no-color",
-      ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: bigPalace } });
+      ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: bigPalace } });
     }
     const r = runBig(["--mp-list", "--page", "1", "--page-size", "2", "--format", "json", "--no-color"]);
     // --mp-list outputs markdown by default, not json. We need to use --format json but
@@ -720,7 +720,7 @@ function main() {
   // Test 43: JSON result has status and page_tokens fields.
   process.stdout.write("\nTest 43: JSON includes status and page_tokens\n");
   {
-    const r = runMdg([
+    const r = runMpg([
       "TODO", "--in", join(fixtures, "auth.ts"),
       "--no-color", "--format", "json", "--page", "1", "--page-size", "1",
     ]);
@@ -736,7 +736,7 @@ function main() {
   // Test 44: no matches sets status = no_matches.
   process.stdout.write("\nTest 44: no matches gives status=no_matches\n");
   {
-    const r = runMdg([
+    const r = runMpg([
       "XYZZY_NEVER_FOUND", "--in", join(fixtures, "auth.ts"),
       "--no-color", "--format", "json",
     ]);
@@ -749,13 +749,13 @@ function main() {
   {
     spawnSync("node", [cliPath, "TODO", "--in", join(fixtures, "auth.ts"),
       "--mp-stash", "auth-only", "auth", "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: palacePath } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: palacePath } });
     spawnSync("node", [cliPath, "TODO", "--in", join(fixtures, "session.ts"),
       "--mp-stash", "sess-only", "session", "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: palacePath } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: palacePath } });
     const r = spawnSync("node", [cliPath, "TODO", "--mp-except", "auth-only", "sess-only",
       "--no-color", "--format", "json",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: palacePath } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: palacePath } });
     assert((r.status ?? -1) === 0, `exit code 0 (got ${r.status})`);
     const json = JSON.parse(r.stdout ?? "{}");
     assert(json.total_nodes >= 1, "except finds matches in auth.ts");
@@ -766,13 +766,13 @@ function main() {
   {
     spawnSync("node", [cliPath, "TODO", "--in", join(fixtures, "auth.ts"),
       "--mp-stash", "shared-auth", "auth", "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: palacePath } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: palacePath } });
     spawnSync("node", [cliPath, "TODO", "--in", join(fixtures, "auth.ts"),
       "--mp-stash", "shared-auth-2", "auth2", "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: palacePath } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: palacePath } });
     const r = spawnSync("node", [cliPath, "TODO", "--mp-intersect", "shared-auth", "shared-auth-2",
       "--no-color", "--format", "json",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: palacePath } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: palacePath } });
     const json = JSON.parse(r.stdout ?? "{}");
     assert(json.total_nodes >= 1, "intersect finds shared auth.ts matches");
   }
@@ -780,7 +780,7 @@ function main() {
   // Test 47: --mp-list shows relative timestamps.
   process.stdout.write("\nTest 47: --mp-list shows relative timestamps\n");
   {
-    const r = runMdgPalace(["--mp-list", "--no-color"]);
+    const r = runMpgPalace(["--mp-list", "--no-color"]);
     assert(/(just now|s ago|m ago)/.test(r.stdout),
       "shows relative time (e.g. 'just now', '30s ago', '2m ago')");
   }
@@ -791,7 +791,7 @@ function main() {
     const r = spawnSync("node", [cliPath, "TODO", "--in", join(fixtures, "auth.ts"),
       "--mp-stash", "ttl-test", "TTL stash", "--mp-ttl", "2h",
       "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: palacePath } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: palacePath } });
     assert((r.status ?? -1) === 0, `exit code 0 (got ${r.status})`);
     const palace = JSON.parse(readFileSync(palacePath, "utf8"));
     assert(palace.stashes["ttl-test"].expires_at !== null, "expires_at is set");
@@ -802,7 +802,7 @@ function main() {
   {
     const r = spawnSync("node", [cliPath, "--mp-prune-older-than", "1ms",
       "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: palacePath } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: palacePath } });
     assert((r.status ?? -1) === 0, `exit code 0 (got ${r.status})`);
     assert(/removed=/.test(r.stdout), "shows prune result");
   }
@@ -812,7 +812,7 @@ function main() {
   {
     const r = spawnSync("node", [cliPath, "--mp-prune-older-than", "1ms",
       "--mp-prune-dry-run", "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: palacePath } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: palacePath } });
     assert(/DRY RUN/.test(r.stdout ?? ""), "shows dry run warning");
   }
 
@@ -823,10 +823,10 @@ function main() {
     for (let i = 0; i < 5; i++) {
       spawnSync("node", [cliPath, "TODO", "--in", join(fixtures, "auth.ts"),
         "--mp-stash", `k${i}`, `stash ${i}`, "--no-color",
-      ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p2 } });
+      ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: p2 } });
     }
     spawnSync("node", [cliPath, "--mp-prune-keep", "2", "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p2 } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: p2 } });
     const palace = JSON.parse(readFileSync(p2, "utf8"));
     const count = Object.keys(palace.stashes).length;
     assert(count === 2, `kept 2 stashes (got ${count})`);
@@ -838,12 +838,12 @@ function main() {
     const p3 = join(fixtures, "tag-palace.json");
     spawnSync("node", [cliPath, "TODO", "--in", join(fixtures, "auth.ts"),
       "--mp-stash", "tagged", "tagged", "--mp-tag", "temp", "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p3 } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: p3 } });
     spawnSync("node", [cliPath, "TODO", "--in", join(fixtures, "auth.ts"),
       "--mp-stash", "untagged", "untagged", "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p3 } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: p3 } });
     spawnSync("node", [cliPath, "--mp-prune-tag", "temp", "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p3 } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: p3 } });
     const palace = JSON.parse(readFileSync(p3, "utf8"));
     assert(!palace.stashes["tagged"], "tagged stash removed");
     assert(palace.stashes["untagged"], "untagged stash remains");
@@ -856,12 +856,12 @@ function main() {
     const p4 = join(fixtures, "rel-palace.json");
     spawnSync("node", [cliPath, "TODO", "--in", join(fixtures, "auth.ts"),
       "--mp-stash", "one", "stash one", "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p4 } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: p4 } });
     spawnSync("node", [cliPath, "TODO", "--in", join(fixtures, "session.ts"),
       "--mp-stash", "two", "stash two", "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p4 } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: p4 } });
     const r = spawnSync("node", [cliPath, "--mp-link", "one", "two", "depends-on", "one needs two", "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p4 } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: p4 } });
     assert((r.status ?? -1) === 0, `exit code 0 (got ${r.status})`);
     assert(/depends-on/.test(r.stdout ?? ""), "shows relationship type");
   }
@@ -871,7 +871,7 @@ function main() {
   {
     const p4 = join(fixtures, "rel-palace.json");
     const r = spawnSync("node", [cliPath, "--mp-related", "one", "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p4 } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: p4 } });
     assert(/two/.test(r.stdout ?? ""), "shows related stash 'two'");
     assert(/depends-on/.test(r.stdout ?? ""), "shows relationship type");
   }
@@ -881,8 +881,8 @@ function main() {
   {
     const p4 = join(fixtures, "rel-palace.json");
     const r = spawnSync("node", [cliPath, "--mp-graph", "one", "2", "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p4 } });
-    assert(/<mdg graph/.test(r.stdout ?? ""), "shows graph output");
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: p4 } });
+    assert(/<mpg graph/.test(r.stdout ?? ""), "shows graph output");
   }
 
   // Test 56: --mp-unlink removes a relationship.
@@ -890,9 +890,9 @@ function main() {
   {
     const p4 = join(fixtures, "rel-palace.json");
     spawnSync("node", [cliPath, "--mp-unlink", "one", "two", "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p4 } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: p4 } });
     const r = spawnSync("node", [cliPath, "--mp-related", "one", "--no-color",
-    ], { encoding: "utf8", env: { ...process.env, MDG_MIND_PALACE: p4 } });
+    ], { encoding: "utf8", env: { ...process.env, MPG_MIND_PALACE: p4 } });
     assert(!/two/.test(r.stdout ?? ""), "relationship removed");
   }
 
@@ -911,7 +911,7 @@ function main() {
   // absolute Windows directory like C:\foo\bar would silently return 0 matches.
   process.stdout.write("\nTest 58: --in with absolute native directory path\n");
   {
-    const r = runMdg(["TODO", "--in", fixtures, "--no-color", "--format", "json"]);
+    const r = runMpg(["TODO", "--in", fixtures, "--no-color", "--format", "json"]);
     assert(r.code === 0, `exit code 0 (got ${r.code})`);
     const json = JSON.parse(r.stdout);
     assert(json.total_nodes >= 1, `finds matches in absolute dir (got ${json.total_nodes})`);
@@ -924,7 +924,7 @@ function main() {
   {
     const dropPalace = join(fixtures, "drop-palace.json");
     if (existsSync(dropPalace)) rmSync(dropPalace);
-    const env = { ...process.env, MDG_MIND_PALACE: dropPalace };
+    const env = { ...process.env, MPG_MIND_PALACE: dropPalace };
     const stash = spawnSync("node", [cliPath, "TODO", "--in", fixtures, "--mp-stash", "doomed", "to-drop", "--no-color"], { encoding: "utf8", env });
     assert(stash.status === 0, `seed stash exit 0 (got ${stash.status})`);
     assert(existsSync(dropPalace), "palace file written");
@@ -947,7 +947,7 @@ function main() {
   {
     const palace = join(fixtures, "drop-followup.json");
     if (existsSync(palace)) rmSync(palace);
-    const env = { ...process.env, MDG_MIND_PALACE: palace };
+    const env = { ...process.env, MPG_MIND_PALACE: palace };
     spawnSync("node", [cliPath, "TODO", "--in", fixtures, "--mp-stash", "alpha", "a", "--no-color"], { encoding: "utf8", env });
     spawnSync("node", [cliPath, "TODO", "--in", fixtures, "--mp-stash", "beta", "b", "--no-color"], { encoding: "utf8", env });
     const drop = spawnSync("node", [cliPath, "--mp-drop", "alpha", "--no-color"], { encoding: "utf8", env });
@@ -967,7 +967,7 @@ function main() {
   {
     const palace = join(fixtures, "parallel.json");
     if (existsSync(palace)) rmSync(palace);
-    const env = { ...process.env, MDG_MIND_PALACE: palace };
+    const env = { ...process.env, MPG_MIND_PALACE: palace };
     // Seed one so loadPalace has snapshot state to diff against.
     spawnSync("node", [cliPath, "TODO", "--in", fixtures, "--mp-stash", "seed", "s", "--no-color"], { encoding: "utf8", env });
     // Kick off two parallel processes adding different stashes.
@@ -985,7 +985,7 @@ function main() {
   // ecosystem convention is --json, and there was no alias before).
   process.stdout.write("\nTest 62: --json alias works\n");
   {
-    const r = runMdg(["TODO", "--in", fixtures, "--no-color", "--json"]);
+    const r = runMpg(["TODO", "--in", fixtures, "--no-color", "--json"]);
     assert(r.code === 0, `exit code 0 (got ${r.code})`);
     let parsed: any = null;
     try { parsed = JSON.parse(r.stdout); } catch { /* leave null */ }
@@ -1000,7 +1000,7 @@ function main() {
   {
     const palace = join(fixtures, "prune-expired.json");
     if (existsSync(palace)) rmSync(palace);
-    const env = { ...process.env, MDG_MIND_PALACE: palace };
+    const env = { ...process.env, MPG_MIND_PALACE: palace };
     spawnSync("node", [cliPath, "TODO", "--in", fixtures, "--mp-stash", "ephemeral", "e", "--mp-ttl", "1s", "--no-color"], { encoding: "utf8", env });
     // Don't actually wait a second — just check the flag parses.
     const dry = spawnSync("node", [cliPath, "--mp-prune-expired", "--mp-prune-dry-run", "--no-color"], { encoding: "utf8", env });

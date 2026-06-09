@@ -1,6 +1,6 @@
-# Sources — what mdg can search
+# Sources — what mpg can search
 
-mdg can search **four** kinds of sources. Pick the right one for the
+mpg can search **four** kinds of sources. Pick the right one for the
 question.
 
 | Source | Flag | Use when |
@@ -23,7 +23,7 @@ question.
 | `--in src/,test/,docs/` | Comma-separated list. |
 | `--in @list.txt` | Read paths from a file (one per line, `#` comments allowed). |
 | `--in @-` | Read paths from stdin (one per line). |
-| `mdg PATTERN path/ ...` | Trailing positionals also work (rg-style). |
+| `mpg PATTERN path/ ...` | Trailing positionals also work (rg-style). |
 
 To pass a path that starts with `-`, prefix it with `./` (so
 `./-weird-name`) or use the `@file` syntax.
@@ -42,10 +42,10 @@ Layered on top of `--in`:
 
 ```bash
 # All TS files except tests
-mdg "TODO" --in src/ --type ts --exclude '*.test.ts'
+mpg "TODO" --in src/ --type ts --exclude '*.test.ts'
 
 # Include hidden + ignored files
-mdg "API_KEY" --in . --hidden --no-ignore
+mpg "API_KEY" --in . --hidden --no-ignore
 ```
 
 ## `--cmd` — search command stdout
@@ -55,13 +55,13 @@ discarded.
 
 ```bash
 # Find error lines in the last 100 commits
-mdg "error|fix|bug" --cmd "git log --oneline -100"
+mpg "error|fix|bug" --cmd "git log --oneline -100"
 
 # Look for deprecation warnings in build output
-mdg "deprecated" --cmd "npm run build"
+mpg "deprecated" --cmd "npm run build"
 
 # Combine with stash
-mdg "TODO" --cmd "git log --pretty=%B -200" \
+mpg "TODO" --cmd "git log --pretty=%B -200" \
   --mp-stash recent-todos "TODOs from recent commit messages"
 ```
 
@@ -77,15 +77,15 @@ GETs a URL and searches the response body as text.
 
 ```bash
 # Search a public docs page
-mdg "rate.limit" -u https://api.example.com/docs
+mpg "rate.limit" -u https://api.example.com/docs
 
 # Combine with --format json to feed back into a research agent
-mdg "deprecated" -u https://example.com/changelog --format json
+mpg "deprecated" -u https://example.com/changelog --format json
 ```
 
 Caveats:
 - Follows redirects.
-- Sends `User-Agent: mdg/0.1`.
+- Sends `User-Agent: mpg/0.1`.
 - The full body is downloaded — don't point at gigabyte assets.
 - No JS execution; SPA-rendered pages won't have their dynamic content.
 
@@ -94,11 +94,11 @@ Caveats:
 Auto-detected when stdin is not a TTY. Useful for ad-hoc pipelines.
 
 ```bash
-cat README.md | mdg "install"
+cat README.md | mpg "install"
 
-curl -s https://api.example.com/feed | mdg "ERROR" --effort deep
+curl -s https://api.example.com/feed | mpg "ERROR" --effort deep
 
-kubectl logs my-pod | mdg "panic|fatal" --effort quick
+kubectl logs my-pod | mpg "panic|fatal" --effort quick
 ```
 
 Caveats:
@@ -113,7 +113,7 @@ invocation. Each becomes a separate source in the result.
 
 ```bash
 # Search the codebase, git log, AND a docs URL in one shot
-mdg "deprecated" \
+mpg "deprecated" \
   --in src/ \
   --cmd "git log --oneline -200" \
   -u https://example.com/changelog

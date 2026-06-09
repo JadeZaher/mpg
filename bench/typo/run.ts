@@ -6,8 +6,8 @@
  * find the answer?
  *
  *   rg                  expected: ~0% recall (literal mismatch)
- *   mdg (no fuzzy)      expected: ~0% recall (uses rg under the hood)
- *   mdg --fuzzy         expected: ≥ rg's correct-pattern recall
+ *   mpg (no fuzzy)      expected: ~0% recall (uses rg under the hood)
+ *   mpg --fuzzy         expected: ≥ rg's correct-pattern recall
  *   embed               variable — semantic embedding may or may not bridge
  */
 
@@ -51,7 +51,7 @@ function runRgSub(corpusRoot: string, pattern: string): SubResult {
   return { files, tokens: approxTokens(r.stdout ?? ""), ms: Date.now() - t0 };
 }
 
-function runMdgSub(corpusRoot: string, pattern: string, fuzzy: boolean): SubResult {
+function runMpgSub(corpusRoot: string, pattern: string, fuzzy: boolean): SubResult {
   const t0 = Date.now();
   const args = [join(repoRoot(), "dist", "index.js"), pattern, "--in", corpusRoot, "--effort", "scan", "--clip", "30", "--format", "json", "--no-color"];
   if (fuzzy) args.push("--fuzzy");
@@ -115,10 +115,10 @@ async function main(): Promise<void> {
 
     // rg with TYPO'd pattern — expected to mostly miss.
     const rgR = runRgSub(corpusRoot, q.typo);
-    // mdg without fuzzy with TYPO'd pattern — uses rg under the hood, same miss.
-    const mdgPlain = runMdgSub(corpusRoot, q.typo, false);
-    // mdg --fuzzy with TYPO'd pattern — should recover.
-    const mdgFuzzy = runMdgSub(corpusRoot, q.typo, true);
+    // mpg without fuzzy with TYPO'd pattern — uses rg under the hood, same miss.
+    const mpgPlain = runMpgSub(corpusRoot, q.typo, false);
+    // mpg --fuzzy with TYPO'd pattern — should recover.
+    const mpgFuzzy = runMpgSub(corpusRoot, q.typo, true);
     // embed with the typo'd query as a prompt.
     const k = gt.size;
     const tEmb = Date.now();
@@ -130,8 +130,8 @@ async function main(): Promise<void> {
     const embR: SubResult = { files: embedFiles, tokens: embTokens, ms: Date.now() - tEmb };
 
     cells.push(score(gt, rgR,      q.label, "rg"));
-    cells.push(score(gt, mdgPlain, q.label, "mdg"));
-    cells.push(score(gt, mdgFuzzy, q.label, "mdg-fuzzy"));
+    cells.push(score(gt, mpgPlain, q.label, "mpg"));
+    cells.push(score(gt, mpgFuzzy, q.label, "mpg-fuzzy"));
     cells.push(score(gt, embR,     q.label, "embed"));
   }
 

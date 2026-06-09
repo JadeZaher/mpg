@@ -6,7 +6,7 @@
  * mirrors the "naive" LLM compaction pattern: retrieve, then
  * summarize.
  *
- * The retrieval step is rg — it's the strongest non-mdg baseline.
+ * The retrieval step is rg — it's the strongest non-mpg baseline.
  * If retrieved content exceeds an input cap, it is truncated to the
  * cap. The single LLM call produces the compaction.
  */
@@ -16,10 +16,10 @@ import { getClient } from "../../macro/agent/client.js";
 import { getOpenRouterClient, DEFAULT_OPENROUTER_MODEL } from "../../macro/agent/openrouter-client.js";
 import type { CompactionTask } from "../tasks.js";
 
-const PROVIDER = ((process.env.MDG_BENCH_PROVIDER ?? "anthropic").toLowerCase() === "openrouter") ? "openrouter" : "anthropic";
+const PROVIDER = ((process.env.MPG_BENCH_PROVIDER ?? "anthropic").toLowerCase() === "openrouter") ? "openrouter" : "anthropic";
 const MAX_INPUT_CHARS = 200_000; // ~50k tokens worth of retrieved context
 const MODEL =
-  process.env.MDG_BENCH_MODEL ??
+  process.env.MPG_BENCH_MODEL ??
   (PROVIDER === "openrouter" ? DEFAULT_OPENROUTER_MODEL : "claude-haiku-4-5-20251001");
 
 function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }

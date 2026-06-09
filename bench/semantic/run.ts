@@ -53,7 +53,7 @@ function rgFileHits(corpusRoot: string, pattern: string): { files: Set<string>; 
 
 interface SubResult { files: Set<string>; tokens: number; ms: number; }
 
-function runMdgSub(corpusRoot: string, pattern: string): SubResult {
+function runMpgSub(corpusRoot: string, pattern: string): SubResult {
   const t0 = Date.now();
   const r = spawnSync(
     "node",
@@ -166,7 +166,7 @@ async function main(): Promise<void> {
       process.stdout.write(`[warn] no ground truth for "${q.label}" (keyword ${q.rg_keyword}) — skipping\n`);
       continue;
     }
-    const mdgR = runMdgSub(corpusRoot, q.rg_keyword);
+    const mpgR = runMpgSub(corpusRoot, q.rg_keyword);
     const rgR  = runRgSub(corpusRoot, q.rg_keyword);
     const psR  = runPowerShellSub(corpusRoot, q.rg_keyword);
 
@@ -178,7 +178,7 @@ async function main(): Promise<void> {
     for (const id of embFiles) embTokens += byId.get(id) ?? 0;
     const embR: SubResult = { files: embFiles, tokens: embTokens, ms: 0 };
 
-    cells.push(score(gt, mdgR, q.label, "mdg"));
+    cells.push(score(gt, mpgR, q.label, "mpg"));
     cells.push(score(gt, rgR,  q.label, "ripgrep"));
     cells.push(score(gt, psR,  q.label, "powershell"));
     cells.push(score(gt, embR, q.label, "embed"));

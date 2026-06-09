@@ -2,15 +2,15 @@
  * Treatment-arm tool implementations.
  *
  * Exports all four control tools plus five mind-palace tools that shell
- * out to the local mdg CLI:
+ * out to the local mpg CLI:
  *
- *   mdg_search        — search the codebase, optionally stash
- *   mdg_stash         — search + stash in one shot
- *   mdg_list_stashes  — list all stashes in the palace
- *   mdg_get_stash     — retrieve a named stash
- *   mdg_drop_stash    — free a named stash
+ *   mpg_search        — search the codebase, optionally stash
+ *   mpg_stash         — search + stash in one shot
+ *   mpg_list_stashes  — list all stashes in the palace
+ *   mpg_get_stash     — retrieve a named stash
+ *   mpg_drop_stash    — free a named stash
  *
- * Every mdg invocation passes --mp-path <palacePath> when palacePath is
+ * Every mpg invocation passes --mp-path <palacePath> when palacePath is
  * set, ensuring per-task palace isolation across concurrent runs.
  */
 
@@ -45,18 +45,18 @@ function getRepoRoot(): string {
 }
 
 const REPO_ROOT = getRepoRoot();
-const MDG_CLI = resolve(REPO_ROOT, "dist", "index.js");
+const MPG_CLI = resolve(REPO_ROOT, "dist", "index.js");
 
-// ─── mdg shell helper ─────────────────────────────────────────────────────────
+// ─── mpg shell helper ─────────────────────────────────────────────────────────
 
-interface MdgResult {
+interface MpgResult {
   stdout: string;
   stderr: string;
   code: number;
 }
 
-function runMdg(args: string[], cwd: string): MdgResult {
-  const r = spawnSync("node", [MDG_CLI, ...args], {
+function runMpg(args: string[], cwd: string): MpgResult {
+  const r = spawnSync("node", [MPG_CLI, ...args], {
     encoding: "utf8",
     cwd,
     stdio: ["ignore", "pipe", "pipe"],
@@ -77,12 +77,12 @@ function str(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
 }
 
-// ─── mdg_search ───────────────────────────────────────────────────────────────
+// ─── mpg_search ───────────────────────────────────────────────────────────────
 
-const mdgSearchSchema: Tool = {
-  name: "mdg_search",
+const mpgSearchSchema: Tool = {
+  name: "mpg_search",
   description:
-    "Search files with mdg. Think of mdg as a LENS over the corpus with no boundary " +
+    "Search files with mpg. Think of mpg as a LENS over the corpus with no boundary " +
     "between files — you set the focal points (matches) and their depth (window). " +
     "It does what grep does (file:line hits) AND what read does (full content), " +
     "depending on flags. " +
@@ -203,13 +203,13 @@ const mdgSearchSchema: Tool = {
   },
 };
 
-function mdgSearchImpl(
+function mpgSearchImpl(
   input: ToolInput,
   cwd: string,
   palacePath: string | undefined,
 ): string {
   const pattern = str(input["pattern"]);
-  if (!pattern) return "[error] mdg_search: 'pattern' is required";
+  if (!pattern) return "[error] mpg_search: 'pattern' is required";
 
   const args: string[] = [pattern, "--format", "json", "--no-color"];
 
@@ -271,9 +271,9 @@ function mdgSearchImpl(
 
   args.push(...palaceArgs(palacePath));
 
-  const { stdout, stderr, code } = runMdg(args, cwd);
+  const { stdout, stderr, code } = runMpg(args, cwd);
   if (code !== 0 && !stdout) {
-    return `[error] mdg_search exited ${code}: ${stderr.trim() || "(no stderr)"}`;
+    return `[error] mpg_search exited ${code}: ${stderr.trim() || "(no stderr)"}`;
   }
 
   try {
@@ -284,14 +284,14 @@ function mdgSearchImpl(
   }
 }
 
-// ─── mdg_stash ────────────────────────────────────────────────────────────────
+// ─── mpg_stash ────────────────────────────────────────────────────────────────
 
-const mdgStashSchema: Tool = {
-  name: "mdg_stash",
+const mpgStashSchema: Tool = {
+  name: "mpg_stash",
   description:
-    "Search and stash results in one shot. Runs mdg with a pattern and stores " +
+    "Search and stash results in one shot. Runs mpg with a pattern and stores " +
     "the matching nodes under the given name in the mind palace. Retrieve later " +
-    "via mdg_get_stash without paying search cost again.",
+    "via mpg_get_stash without paying search cost again.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -327,15 +327,15 @@ const mdgStashSchema: Tool = {
   },
 };
 
-function mdgStashImpl(
+function mpgStashImpl(
   input: ToolInput,
   cwd: string,
   palacePath: string | undefined,
 ): string {
   const name = str(input["name"]);
   const pattern = str(input["pattern"]);
-  if (!name) return "[error] mdg_stash: 'name' is required";
-  if (!pattern) return "[error] mdg_stash: 'pattern' is required";
+  if (!name) return "[error] mpg_stash: 'name' is required";
+  if (!pattern) return "[error] mpg_stash: 'pattern' is required";
 
   const args: string[] = [pattern, "--mp-stash", name];
 
@@ -357,17 +357,17 @@ function mdgStashImpl(
 
   args.push("--no-color", ...palaceArgs(palacePath));
 
-  const { stdout, stderr, code } = runMdg(args, cwd);
+  const { stdout, stderr, code } = runMpg(args, cwd);
   if (code !== 0 && !stdout) {
-    return `[error] mdg_stash exited ${code}: ${stderr.trim() || "(no stderr)"}`;
+    return `[error] mpg_stash exited ${code}: ${stderr.trim() || "(no stderr)"}`;
   }
   return stdout.trim() || `Stash '${name}' saved.`;
 }
 
-// ─── mdg_list_stashes ─────────────────────────────────────────────────────────
+// ─── mpg_list_stashes ─────────────────────────────────────────────────────────
 
-const mdgListStashesSchema: Tool = {
-  name: "mdg_list_stashes",
+const mpgListStashesSchema: Tool = {
+  name: "mpg_list_stashes",
   description:
     "List all named stashes currently held in the mind palace. " +
     "Use this to see what you have saved before retrieving or dropping.",
@@ -377,23 +377,23 @@ const mdgListStashesSchema: Tool = {
   },
 };
 
-function mdgListStashesImpl(
+function mpgListStashesImpl(
   _input: ToolInput,
   cwd: string,
   palacePath: string | undefined,
 ): string {
   const args = ["--mp-list", "--no-color", ...palaceArgs(palacePath)];
-  const { stdout, stderr, code } = runMdg(args, cwd);
+  const { stdout, stderr, code } = runMpg(args, cwd);
   if (code !== 0 && !stdout) {
-    return `[error] mdg_list_stashes exited ${code}: ${stderr.trim() || "(no stderr)"}`;
+    return `[error] mpg_list_stashes exited ${code}: ${stderr.trim() || "(no stderr)"}`;
   }
   return stdout.trim() || "(no stashes)";
 }
 
-// ─── mdg_get_stash ────────────────────────────────────────────────────────────
+// ─── mpg_get_stash ────────────────────────────────────────────────────────────
 
-const mdgGetStashSchema: Tool = {
-  name: "mdg_get_stash",
+const mpgGetStashSchema: Tool = {
+  name: "mpg_get_stash",
   description:
     "Retrieve a named stash from the mind palace. Returns the stored nodes " +
     "without running a new search — recall is free in token cost.",
@@ -409,26 +409,26 @@ const mdgGetStashSchema: Tool = {
   },
 };
 
-function mdgGetStashImpl(
+function mpgGetStashImpl(
   input: ToolInput,
   cwd: string,
   palacePath: string | undefined,
 ): string {
   const name = str(input["name"]);
-  if (!name) return "[error] mdg_get_stash: 'name' is required";
+  if (!name) return "[error] mpg_get_stash: 'name' is required";
 
   const args = ["--mp-get", name, "--no-color", ...palaceArgs(palacePath)];
-  const { stdout, stderr, code } = runMdg(args, cwd);
+  const { stdout, stderr, code } = runMpg(args, cwd);
   if (code !== 0 && !stdout) {
-    return `[error] mdg_get_stash exited ${code}: ${stderr.trim() || "(no stderr)"}`;
+    return `[error] mpg_get_stash exited ${code}: ${stderr.trim() || "(no stderr)"}`;
   }
   return stdout.trim() || `(stash '${name}' is empty or not found)`;
 }
 
-// ─── mdg_drop_stash ───────────────────────────────────────────────────────────
+// ─── mpg_drop_stash ───────────────────────────────────────────────────────────
 
-const mdgDropStashSchema: Tool = {
-  name: "mdg_drop_stash",
+const mpgDropStashSchema: Tool = {
+  name: "mpg_drop_stash",
   description:
     "Free a named stash from the mind palace to reclaim the slot. " +
     "Use when you no longer need the stored results.",
@@ -444,40 +444,40 @@ const mdgDropStashSchema: Tool = {
   },
 };
 
-function mdgDropStashImpl(
+function mpgDropStashImpl(
   input: ToolInput,
   cwd: string,
   palacePath: string | undefined,
 ): string {
   const name = str(input["name"]);
-  if (!name) return "[error] mdg_drop_stash: 'name' is required";
+  if (!name) return "[error] mpg_drop_stash: 'name' is required";
 
   const args = ["--mp-drop", name, "--no-color", ...palaceArgs(palacePath)];
-  const { stdout, stderr, code } = runMdg(args, cwd);
+  const { stdout, stderr, code } = runMpg(args, cwd);
   if (code !== 0 && !stdout) {
-    return `[error] mdg_drop_stash exited ${code}: ${stderr.trim() || "(no stderr)"}`;
+    return `[error] mpg_drop_stash exited ${code}: ${stderr.trim() || "(no stderr)"}`;
   }
   return stdout.trim() || `Stash '${name}' dropped.`;
 }
 
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
-export const TREATMENT_MDG_SCHEMAS: Tool[] = [
-  mdgSearchSchema,
-  mdgStashSchema,
-  mdgListStashesSchema,
-  mdgGetStashSchema,
-  mdgDropStashSchema,
+export const TREATMENT_MPG_SCHEMAS: Tool[] = [
+  mpgSearchSchema,
+  mpgStashSchema,
+  mpgListStashesSchema,
+  mpgGetStashSchema,
+  mpgDropStashSchema,
 ];
 
 export const ALL_TREATMENT_SCHEMAS: Tool[] = [
   ...CONTROL_TOOL_DEFS.map((d) => d.schema),
-  ...TREATMENT_MDG_SCHEMAS,
+  ...TREATMENT_MPG_SCHEMAS,
 ];
 
 /**
- * Build a dispatch map for all treatment-arm tools (control + mdg).
- * palacePath is captured in each mdg handler's closure.
+ * Build a dispatch map for all treatment-arm tools (control + mpg).
+ * palacePath is captured in each mpg handler's closure.
  */
 export function buildTreatmentDispatch(
   cwd: string,
@@ -490,11 +490,11 @@ export function buildTreatmentDispatch(
     (input: ToolInput) =>
       fn(input, cwd, palacePath);
 
-  m.set("mdg_search", bind(mdgSearchImpl));
-  m.set("mdg_stash", bind(mdgStashImpl));
-  m.set("mdg_list_stashes", bind(mdgListStashesImpl));
-  m.set("mdg_get_stash", bind(mdgGetStashImpl));
-  m.set("mdg_drop_stash", bind(mdgDropStashImpl));
+  m.set("mpg_search", bind(mpgSearchImpl));
+  m.set("mpg_stash", bind(mpgStashImpl));
+  m.set("mpg_list_stashes", bind(mpgListStashesImpl));
+  m.set("mpg_get_stash", bind(mpgGetStashImpl));
+  m.set("mpg_drop_stash", bind(mpgDropStashImpl));
 
   return m;
 }

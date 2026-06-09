@@ -19,10 +19,10 @@ between them.
 
 ```bash
 # Agent A
-MDG_MIND_PALACE=.mdg/agent-a.json mdg "TODO" --in src/ --mp-stash mine "..."
+MPG_MIND_PALACE=.mpg/agent-a.json mpg "TODO" --in src/ --mp-stash mine "..."
 
 # Agent B
-MDG_MIND_PALACE=.mdg/agent-b.json mdg "TODO" --in src/ --mp-stash mine "..."
+MPG_MIND_PALACE=.mpg/agent-b.json mpg "TODO" --in src/ --mp-stash mine "..."
 ```
 
 Pros: zero lock contention, easy to garbage-collect (just `rm` the
@@ -38,12 +38,12 @@ One canonical palace, populated by a coordinator agent. Worker agents
 
 ```bash
 # Coordinator stashes the project's key contexts:
-MDG_MIND_PALACE=.mdg/shared.json mdg "TODO" --in src/auth/ \
+MPG_MIND_PALACE=.mpg/shared.json mpg "TODO" --in src/auth/ \
   --mp-stash auth-overview "Auth subsystem"
 
 # Workers read from shared, write to their own scratch:
-MDG_MIND_PALACE=.mdg/worker-1.json \
-  mdg "rate.limit" --mp-from auth-overview --mp-stash w1-findings "..."
+MPG_MIND_PALACE=.mpg/worker-1.json \
+  mpg "rate.limit" --mp-from auth-overview --mp-stash w1-findings "..."
 ```
 
 Pros: shared context with a clear authorship model — coordinator
@@ -60,7 +60,7 @@ added, then renames atomically into place.
 
 ```bash
 # All agents
-export MDG_MIND_PALACE=.mdg/team.json
+export MPG_MIND_PALACE=.mpg/team.json
 ```
 
 Pros: maximum visibility — everyone sees everyone's findings as
@@ -73,7 +73,7 @@ the slowest agent's stash latency becomes everyone's stash latency.
 
 ## Concurrency model (what the lock actually does)
 
-mdg's write path is:
+mpg's write path is:
 
 1. Acquire `<palace>.lock` (sibling file, `O_EXCL`). Backs off with
    jitter for up to 2s; force-breaks a stale lock older than 30s.
@@ -90,7 +90,7 @@ Consequence for agent design:
 - **Two agents stashing different stash names in parallel: both land.**
   The merge step in (3) ensures it.
 - **Two agents stashing the same name in parallel: last writer wins
-  for that stash.** This is intentional — `mdg_stash` with `replace`
+  for that stash.** This is intentional — `mpg_stash` with `replace`
   semantics is supposed to overwrite. If you want a merge of two
   parallel updates to the same stash, model them as two different
   names and compose them later.
@@ -98,9 +98,9 @@ Consequence for agent design:
   agents will detect this (mtime > 30s) and break it. No manual
   cleanup needed unless something is very wrong (in which case
   `rm <palace>.lock`).
-- **A corrupted palace file is preserved, not overwritten.** mdg
+- **A corrupted palace file is preserved, not overwritten.** mpg
   copies it aside as `<palace>.corrupt.<timestamp>` and **refuses
-  to save** for the rest of that process unless `MDG_FORCE_RESET=1`
+  to save** for the rest of that process unless `MPG_FORCE_RESET=1`
   is set. Inspect the backup before forcing.
 
 The palace file is still plain JSON. If you suspect divergence between
@@ -121,7 +121,7 @@ avoid collisions and make ownership obvious:
 Tag with the agent or task ID too:
 
 ```bash
-mdg "TODO" --in src/ --mp-stash w1-auth "Worker 1 auth findings" \
+mpg "TODO" --in src/ --mp-stash w1-auth "Worker 1 auth findings" \
   --mp-tag worker1 --mp-tag task-42
 ```
 
@@ -133,8 +133,8 @@ cleanly when a worker is done.
 - **Use TTL on transient findings**: `--mp-ttl 2h` on a worker's
   exploratory stashes so the palace self-cleans.
 - **Prune by tag on agent shutdown**: when a worker finishes, run
-  `mdg --mp-prune-tag <worker-id>` to drop its scratch.
-- **Snapshot before destructive ops**: `cp .mdg/shared.json .mdg/shared.bak`
+  `mpg --mp-prune-tag <worker-id>` to drop its scratch.
+- **Snapshot before destructive ops**: `cp .mpg/shared.json .mpg/shared.bak`
   before any `--mp-prune-*`.
 
 ## Anti-patterns

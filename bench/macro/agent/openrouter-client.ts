@@ -80,8 +80,8 @@ export async function getOpenRouterClient(): Promise<OpenAIClient> {
     maxRetries: 0, // our outer loop handles retries; don't double-retry
     defaultHeaders: {
       // Optional but polite: lets OpenRouter attribute requests.
-      "HTTP-Referer": "https://github.com/JadeZaher/mdg",
-      "X-Title": "mdg benchmark",
+      "HTTP-Referer": "https://github.com/JadeZaher/mpg",
+      "X-Title": "mpg benchmark",
     },
   });
   return _client;

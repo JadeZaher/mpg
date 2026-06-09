@@ -9,15 +9,15 @@
  *
  * Arms:
  *   truncation     no-LLM, most-recent files until budget hits
- *   mdg-scan       no-LLM, one mdg call (scan + sort recent + log curve)
+ *   mpg-scan       no-LLM, one mpg call (scan + sort recent + log curve)
  *   summarization  LLM baseline: rg-retrieve, single-pass summarize
  *
- * The headline finding is "zero-LLM mdg-scan beats LLM summarization at
- * the same budget" — the agentic mdg arm previously here added no
+ * The headline finding is "zero-LLM mpg-scan beats LLM summarization at
+ * the same budget" — the agentic mpg arm previously here added no
  * signal: both Haiku and DeepSeek emitted a "done" status without
  * writing the synthesis to a file, so the bench scored their final
  * 15-token messages and reported a stable 0–11% pass rate that
- * misrepresented mdg's actual compaction value. Dropped.
+ * misrepresented mpg's actual compaction value. Dropped.
  *
  * Without ANTHROPIC_API_KEY: skips LLM arms AND scoring; writes a
  * status=skipped record. Without the corpus: writes status=skipped.
@@ -33,7 +33,7 @@ import { writeResult } from "../lib/runner.js";
 import { discoverMegaCorpus, MEGA_CORPUS_ROOTS, type CorpusDoc } from "../lib/corpus.js";
 import { TASKS, ensureMegaCorpus, type CompactionTask } from "./tasks.js";
 import { runTruncation } from "./arms/truncation.js";
-import { runMdgScan } from "./arms/mdg-scan.js";
+import { runMpgScan } from "./arms/mpg-scan.js";
 import { runSummarization } from "./arms/summarization.js";
 import { scoreCompaction, type ScoringResult } from "./scoring.js";
 
@@ -84,10 +84,10 @@ async function runOneTask(task: CompactionTask, docs: CorpusDoc[], hasApi: boole
     cells.push(makeCell(task, r, scoring));
   }
 
-  // 2. mdg-scan — no LLM
-  process.stdout.write(`  mdg-scan... `);
+  // 2. mpg-scan — no LLM
+  process.stdout.write(`  mpg-scan... `);
   {
-    const r = await runMdgScan(task, corpusRoot);
+    const r = await runMpgScan(task, corpusRoot);
     let scoring: ScoringResult = { qas: [], pass_rate: 0, total_input_tokens: 0, total_output_tokens: 0 };
     if (hasApi) scoring = await scoreCompaction(r.compaction, task.questions);
     process.stdout.write(`pass=${fmtPct(scoring.pass_rate)} comp=${r.compaction_tokens}t\n`);
@@ -166,7 +166,7 @@ async function main(): Promise<void> {
   const docs = discoverMegaCorpus();
   process.stdout.write(`Mega-corpus: ${docs.length} files\n`);
   if (!hasApi) {
-    process.stdout.write(`ANTHROPIC_API_KEY not set — running no-LLM arms only (truncation, mdg-scan).\n` +
+    process.stdout.write(`ANTHROPIC_API_KEY not set — running no-LLM arms only (truncation, mpg-scan).\n` +
       `Scoring requires the API key; the no-LLM arms will be recorded with pass_rate=0 and skip flag set.\n`);
   }
 

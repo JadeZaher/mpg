@@ -13,10 +13,10 @@
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runMdg, assert, reportAndExit, search } from "../lib/runner.js";
+import { runMpg, assert, reportAndExit, search } from "../lib/runner.js";
 
 function makeTinyCorpus(): string {
-  const root = mkdtempSync(join(tmpdir(), "mdg-micro-"));
+  const root = mkdtempSync(join(tmpdir(), "mpg-micro-"));
   const write = (rel: string, content: string) => {
     const abs = join(root, rel);
     mkdirSync(join(abs, ".."), { recursive: true });
@@ -33,11 +33,11 @@ function makeTinyCorpus(): string {
 }
 
 function palacePath(root: string): string {
-  return join(root, ".mdg", "palace.json");
+  return join(root, ".mpg", "palace.json");
 }
 
 function stash(root: string, pattern: string, name: string, note = "n"): void {
-  const r = runMdg({
+  const r = runMpg({
     args: [pattern, "--in", root, "--mp-stash", name, note, "--mp-path", palacePath(root), "--no-color"],
     cwd: root,
   });
@@ -126,12 +126,12 @@ function main(): void {
       stash(root, "alpha", "k2");
       stash(root, "alpha", "k3");
       stash(root, "alpha", "k4");
-      const pruneR = runMdg({
+      const pruneR = runMpg({
         args: ["--mp-prune-keep", "2", "--mp-path", palacePath(root), "--no-color"],
         cwd: root,
       });
       assert(pruneR.code === 0, "prune-keep exits cleanly");
-      const listR = runMdg({
+      const listR = runMpg({
         args: ["--mp-list", "--mp-path", palacePath(root), "--no-color"],
         cwd: root,
       });
@@ -148,14 +148,14 @@ function main(): void {
     process.stdout.write("\n## graph terminates on cycles\n");
     {
       // Rebuild a fresh small palace for clean cycle test
-      const cyclePalace = join(root, ".mdg", "cycle.json");
-      runMdg({ args: ["alpha", "--in", root, "--mp-stash", "x", "x", "--mp-path", cyclePalace, "--no-color"], cwd: root });
-      runMdg({ args: ["alpha", "--in", root, "--mp-stash", "y", "y", "--mp-path", cyclePalace, "--no-color"], cwd: root });
-      runMdg({ args: ["--mp-link", "x", "y", "depends-on", "--mp-path", cyclePalace, "--no-color"], cwd: root });
-      runMdg({ args: ["--mp-link", "y", "x", "depends-on", "--mp-path", cyclePalace, "--no-color"], cwd: root });
+      const cyclePalace = join(root, ".mpg", "cycle.json");
+      runMpg({ args: ["alpha", "--in", root, "--mp-stash", "x", "x", "--mp-path", cyclePalace, "--no-color"], cwd: root });
+      runMpg({ args: ["alpha", "--in", root, "--mp-stash", "y", "y", "--mp-path", cyclePalace, "--no-color"], cwd: root });
+      runMpg({ args: ["--mp-link", "x", "y", "depends-on", "--mp-path", cyclePalace, "--no-color"], cwd: root });
+      runMpg({ args: ["--mp-link", "y", "x", "depends-on", "--mp-path", cyclePalace, "--no-color"], cwd: root });
       // Walk depth 5 — should not hang. We just assert it completes within a generous budget.
       const t0 = Date.now();
-      const gr = runMdg({
+      const gr = runMpg({
         args: ["--mp-graph", "x", "5", "--mp-path", cyclePalace, "--no-color"],
         cwd: root,
       });

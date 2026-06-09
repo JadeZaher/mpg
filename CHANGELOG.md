@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 — rename to mpg / mind-palace-graph (hard cut, no aliases)
+
+Breaking: CLI renamed from `mdg` to `mpg`. Project name is now mind-palace-graph.
+Env vars: `MDG_*` → `MPG_*`. Palace dir: `.mdg/` → `.mpg/`. MCP tools: `mdg_*` → `mpg_*`.
+Skill: `mdg-context` → `mpg-context`. No back-compat shims — released too recently
+to have an adoption surface to protect.
+
 ## 0.2.6
 
 Field-report patch: agents recalling stashes were paying for the

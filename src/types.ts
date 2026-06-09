@@ -1,5 +1,5 @@
 /**
- * Core types for mdg.
+ * Core types for mpg.
  *
  * A "node" is the fundamental unit of retrieval: a search match plus
  * its pre/post context window, sized in tokens (not lines).

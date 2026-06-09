@@ -5,7 +5,11 @@ dist/
 .env
 .pi/
 test/fixtures/
-.mdg/
+.mpg/
 
 # Local transformers.js model cache (downloaded on first bench run)
 .transformers-cache/
+.claude/scheduled_tasks.lock
+.claude/settings.json
+.claude/settings.local.json
+.gitignore

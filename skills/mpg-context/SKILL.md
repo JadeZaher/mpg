@@ -1,5 +1,5 @@
 ---
-name: mdg-context
+name: mpg-context
 description: >
   Token-budgeted codebase search with composable short-term memory.
   Search files, command output, and URLs for regex patterns; results
@@ -11,28 +11,28 @@ description: >
   programmatic import (Anthropic / Google SDKs).
   Use for codebase exploration, multi-step investigation, finding
   references, and building cross-invocation working memory.
-  DO NOT use mdg for: a single known file path (use Read); a single
+  DO NOT use mpg for: a single known file path (use Read); a single
   symbol grep on a small tree where you expect ≤ ~30 hits (use Grep);
   files under ~200 lines you'll fully consume (the budgeting overhead
   is only worth it for >1KB result sets or persistent recall). The
-  decision tree under "When NOT to use mdg" makes the cutoff concrete.
+  decision tree under "When NOT to use mpg" makes the cutoff concrete.
 tools:
-  - mdg_search
-  - mdg_stash
-  - mdg_list_stashes
-  - mdg_get_stash
-  - mdg_drop_stash
+  - mpg_search
+  - mpg_stash
+  - mpg_list_stashes
+  - mpg_get_stash
+  - mpg_drop_stash
 install:
-  npm: npm install -g mdg-cli
-  source: git clone https://github.com/JadeZaher/mdg && cd mdg && npm install && npm run build && npm link
-  verify: mdg --version
+  npm: npm install -g mpg-cli
+  source: git clone https://github.com/JadeZaher/mind-palace-graph && cd mind-palace-graph && npm install && npm run build && npm link
+  verify: mpg --version
 ---
 
-# mdg-context — Codebase Context Retrieval Skill
+# mpg-context — Codebase Context Retrieval Skill
 
 ## The lens mental model
 
-mdg is a single **lens over the corpus**, not a separate tool you reach
+mpg is a single **lens over the corpus**, not a separate tool you reach
 for after grep and read. There are no boundaries between files — you
 dial the lens to fit the task:
 
@@ -41,7 +41,7 @@ dial the lens to fit the task:
   `before` / `after` / `window_curve`).
 - **Surface** = where the lens looks (`in`, `from`, `compose`, `page`).
 
-With the right flags, one `mdg_search` call replaces what would
+With the right flags, one `mpg_search` call replaces what would
 otherwise be 1–N `grep` + `read` combos:
 
 | Job | Lens setting |
@@ -53,31 +53,31 @@ otherwise be 1–N `grep` + `read` combos:
 | "Catch a typo'd term" | `fuzzy: true` |
 | "Search only files I already touched" | `from: "<stash-name>"` |
 
-The mind palace (`mdg_stash`) is just persistent state for the lens:
+The mind palace (`mpg_stash`) is just persistent state for the lens:
 stash a result and the next search can be scoped to those files
 across the entire corpus without re-scanning.
 
-## When NOT to use mdg
+## When NOT to use mpg
 
-mdg has a real startup cost (~200ms cold) and the budgeting machinery
+mpg has a real startup cost (~200ms cold) and the budgeting machinery
 only pays off above a certain payload size. Use the wrong tool for the
 job and you pay overhead for no win. The cutoffs in plain terms:
 
 ```
-mdg vs alternative?
+mpg vs alternative?
 ├─ Known file path, you want to read it       → host's Read tool
 ├─ Single symbol grep, ≤ ~30 hits expected    → host's Grep / rg
 ├─ One file < 200 lines, you'll read it all   → Read it directly
 ├─ One-word "does X exist?" answer            → rg / grep is cheaper
-├─ Multi-file scan, results > ~1KB total      → mdg_search
-├─ Need persistent recall across turns        → mdg_search + mdg_stash
-├─ Cross-cutting investigation, 2+ threads    → mdg_search --mp-compose
+├─ Multi-file scan, results > ~1KB total      → mpg_search
+├─ Need persistent recall across turns        → mpg_search + mpg_stash
+├─ Cross-cutting investigation, 2+ threads    → mpg_search --mp-compose
 ├─ Already stashed the file set you want      → --mp-from (skip re-scan)
-└─ Opaque tool output > ~3KB you want to filter → mdg --cmd or --url
+└─ Opaque tool output > ~3KB you want to filter → mpg --cmd or --url
 ```
 
 Hard rule: **if you can name the file and you're going to consume the
-whole thing, do not route through mdg**. The token budgeter assumes you
+whole thing, do not route through mpg**. The token budgeter assumes you
 want a *subset* of a *larger* payload. When the payload is small, the
 overhead (~200ms cold start, plus token-counting work) buys nothing.
 
@@ -107,18 +107,18 @@ which ones matter" and "I have 8 stashes that map to the open threads."
 Three rules of thumb for the lifecycle:
 
 1. **Always TTL scratch.** `--mp-ttl 4h` on exploratory scans, `--mp-ttl 24h` on findings, no TTL on canonical context. Auto-prune on `--mp-list`/`--mp-get` will clean up the rest.
-2. **One palace per task.** Set `MDG_MIND_PALACE=.mdg/<task>.json` or pass `--mp-path` per invocation. Today there is one *active* palace per call — there is no cross-palace federation; isolation is the path you point at. Don't mix unrelated tasks in one palace.
+2. **One palace per task.** Set `MPG_MIND_PALACE=.mpg/<task>.json` or pass `--mp-path` per invocation. Today there is one *active* palace per call — there is no cross-palace federation; isolation is the path you point at. Don't mix unrelated tasks in one palace.
 3. **`--mp-list` is the palace overview; `--mp-get` is the per-stash card view; `--mp-get --with-nodes` is the full read.** `--mp-list` is one line of metadata per stash — best for "what's in my palace?". `--mp-get <name>` is the **card view by default**: note, tags, relations, sources, and counts (5–6× cheaper than the old full dump — the synthesized intel without the captured bodies). Add `--with-nodes` (or its synonym `--full`) only when you actually need the captured node context. Pagination only applies in `--with-nodes` mode; use `--page 1 --page-size 5` when a stash is large.
 
 ## Quick start
 
 ```bash
-npm install -g mdg-cli && mdg --version
+npm install -g mpg-cli && mpg --version
 ```
 
 If running through an MCP-capable host (Claude Desktop, Claude Code,
 Cline, Windsurf, Continue.dev), the five tools below register
-automatically once the `mdg` MCP server is configured.
+automatically once the `mpg` MCP server is configured.
 
 ## When to use
 
@@ -127,18 +127,18 @@ indexed by situation.
 
 | Situation | Tool |
 | :--- | :--- |
-| "Browse my recent memory — what just changed about X?" | `mdg_search` (`effort: "scan", sort: "recent", clip_chars: 30`) |
-| "Where is X referenced?" | `mdg_search` (`effort: "scan", clip_chars: 30`) — cheapest hit list |
-| "Need context around a match" | `mdg_search` (`effort: "quick"`) — small windows around top 10 hits |
-| "Deep context for one targeted answer" | `mdg_search` (`effort: "deep"`) — 100 nodes × 2k tokens each |
-| "User typed a typo — find anyway" | `mdg_search` (`fuzzy: true`) — edit distance ≤ 2 |
-| "Compact a topic into a token budget" | `mdg_search` (`effort: "scan", clip_chars: 30, max_tokens: N`) |
-| "I'll need these hits again later" | `mdg_stash` |
-| "Search only files I previously stashed" | `mdg_search` (`from` or `compose`) |
-| "What stashes do I have?" | `mdg_list_stashes` |
-| "Forget this stash" | `mdg_drop_stash` |
-| "Just read one file" | use the host's read tool — mdg is for *searching* |
-| "Search a URL or command output" | `mdg_search` (`url` or `cmd`) — see `references/sources.md` |
+| "Browse my recent memory — what just changed about X?" | `mpg_search` (`effort: "scan", sort: "recent", clip_chars: 30`) |
+| "Where is X referenced?" | `mpg_search` (`effort: "scan", clip_chars: 30`) — cheapest hit list |
+| "Need context around a match" | `mpg_search` (`effort: "quick"`) — small windows around top 10 hits |
+| "Deep context for one targeted answer" | `mpg_search` (`effort: "deep"`) — 100 nodes × 2k tokens each |
+| "User typed a typo — find anyway" | `mpg_search` (`fuzzy: true`) — edit distance ≤ 2 |
+| "Compact a topic into a token budget" | `mpg_search` (`effort: "scan", clip_chars: 30, max_tokens: N`) |
+| "I'll need these hits again later" | `mpg_stash` |
+| "Search only files I previously stashed" | `mpg_search` (`from` or `compose`) |
+| "What stashes do I have?" | `mpg_list_stashes` |
+| "Forget this stash" | `mpg_drop_stash` |
+| "Just read one file" | use the host's read tool — mpg is for *searching* |
+| "Search a URL or command output" | `mpg_search` (`url` or `cmd`) — see `references/sources.md` |
 
 ## Effort presets and shape knobs
 
@@ -163,7 +163,7 @@ Shape knobs (mix with any effort):
 **1. Cheapest first-touch index — "browse my memory"**
 
 ```ts
-mdg_search({
+mpg_search({
   pattern: "JWT Bearer",          // or any concept keyword
   in: ["./conductor/tracks"],
   effort: "scan",
@@ -179,7 +179,7 @@ What you get: file:line hits with a 30-char snippet on each side, sorted by rece
 **2. Typo-tolerant search**
 
 ```ts
-mdg_search({ pattern: "PrvderiContext", in: [...], fuzzy: true })
+mpg_search({ pattern: "PrvderiContext", in: [...], fuzzy: true })
 ```
 
 `fuzzy: true` catches all four common typo modes (drop / insert / substitute / swap). Use when the user's input is uncertain.
@@ -188,11 +188,11 @@ mdg_search({ pattern: "PrvderiContext", in: [...], fuzzy: true })
 
 ```ts
 // Turn 1: scan + stash
-const scan = await mdg_search({ pattern: "...", effort: "scan", clip_chars: 30, sort: "recent" });
-await mdg_stash({ name: "topic-index", note: "...", tags: ["topic"] });
+const scan = await mpg_search({ pattern: "...", effort: "scan", clip_chars: 30, sort: "recent" });
+await mpg_stash({ name: "topic-index", note: "...", tags: ["topic"] });
 
 // Turn 2+: drill into ONE file from the index
-await mdg_search({ pattern: "...", effort: "normal", from: "topic-index" });
+await mpg_search({ pattern: "...", effort: "normal", from: "topic-index" });
 ```
 
 The mind palace makes the index addressable across turns. Re-scoping to a stash is cheaper than re-searching the whole tree.
@@ -201,7 +201,7 @@ The mind palace makes the index addressable across turns. Re-scoping to a stash 
 
 ```ts
 // Produces a topic-focused compaction in one tool call.
-mdg_search({
+mpg_search({
   pattern: "auth|JWT|Bearer|ProviderContext",  // OR your topic keywords
   in: ["..."],
   effort: "scan",
@@ -217,7 +217,7 @@ On the compaction bench, this single CLI call beats LLM-driven summarization (67
 **5. Whole-repo scan ("does X appear anywhere?")**
 
 ```ts
-mdg_search({ pattern: "ProviderContext", in: ["."], effort: "scan", clip_chars: 20 })
+mpg_search({ pattern: "ProviderContext", in: ["."], effort: "scan", clip_chars: 20 })
 ```
 
 Pass directories — including `.` — directly. The dir spec goes straight to ripgrep's parallel ignore-aware walk, so a full-repo scan is comparable to running `rg` itself rather than fanning out per file. Don't pre-expand to a file list in your harness; that's strictly slower.
@@ -226,42 +226,42 @@ Pass directories — including `.` — directly. The dir spec goes straight to r
 
 ```bash
 # union: files matching either thread
-mdg_search({ pattern: "Redis", compose: ["rate-limit-impl", "rate-limit-docs"] })
+mpg_search({ pattern: "Redis", compose: ["rate-limit-impl", "rate-limit-docs"] })
 # intersection: files mentioned in BOTH threads (CLI only)
-mdg --mp-intersect rate-limit-impl rate-limit-docs
+mpg --mp-intersect rate-limit-impl rate-limit-docs
 # subtraction: in A but not in B (CLI only)
-mdg --mp-except rate-limit-impl --mp-except-name rate-limit-archived
+mpg --mp-except rate-limit-impl --mp-except-name rate-limit-archived
 ```
 
 Use this instead of "let me list both stashes and diff in my head." The set operations are O(stash count), not O(corpus).
 
 **7. Filter opaque tool output / web pages without reading the whole body**
 
-The job mdg does best is **token-budgeting a payload you don't want
+The job mpg does best is **token-budgeting a payload you don't want
 to read in full**. WebFetch on a long doc page, `gh pr view --json`,
 `kubectl describe`, `terraform plan`, `npm ls`, a CI log — these are
 all the same shape: many KB of mostly-irrelevant text wrapping the few
 lines that actually answer the question. Route the source through
-`mdg --cmd "..."` or `mdg --url "..."` instead of dumping the full
+`mpg --cmd "..."` or `mpg --url "..."` instead of dumping the full
 body into context.
 
 ```ts
 // WebFetch a doc page, only see the auth section
-mdg_search({
+mpg_search({
   pattern: "authentication|auth|token",
   url: "https://example.com/api/docs",
   effort: "scan", clip_chars: 50, max_tokens: 1500
 })
 
 // Pull just the failing tests from a verbose CI log
-mdg_search({
+mpg_search({
   pattern: "FAIL|✗|error TS",
   cmd: "gh run view --log 12345",
   effort: "scan", clip_chars: 80, max_tokens: 2000
 })
 
 // Filter `kubectl describe` to just events / errors
-mdg_search({
+mpg_search({
   pattern: "Warning|Error|Failed",
   cmd: "kubectl describe pod my-pod",
   effort: "scan", clip_chars: 100
@@ -271,7 +271,7 @@ mdg_search({
 Three rules of thumb:
 
 1. **If a tool output is >3 KB and you only care about 1–2 patterns,
-   route it through mdg.** The wins compound — every avoided
+   route it through mpg.** The wins compound — every avoided
    full-body read is tokens you can spend on reasoning.
 2. **Stash the filtered result if you'll reference it again.**
    Filtered tool output is often the cheapest stash you'll ever make.
@@ -282,7 +282,7 @@ Three rules of thumb:
 
 Hard caps you can rely on so a hostile or runaway source can't drain
 context: `url` is capped at 16 MB and 30 s with a content-type guard;
-`cmd` is capped at 64 MB and 60 s. Past those, mdg returns truncated
+`cmd` is capped at 64 MB and 60 s. Past those, mpg returns truncated
 output with a marker — not a hung agent.
 
 **8. `window_curve` — token sculpting across ranked results**
@@ -307,7 +307,7 @@ Concrete invocations:
 ```ts
 // "What changed in auth recently?" — newest file gets a full read,
 // older ones get disambiguating snippets.
-mdg_search({
+mpg_search({
   pattern: "session|token|auth",
   in: ["src/auth/"],
   effort: "deep",
@@ -317,7 +317,7 @@ mdg_search({
 
 // Compaction — the canonical 0-LLM-cost summary pattern. log curve
 // keeps the top 3 hits substantial while letting the long tail shrink.
-mdg_search({
+mpg_search({
   pattern: "auth|JWT|Bearer|ProviderContext",
   in: ["."],
   effort: "scan",
@@ -329,7 +329,7 @@ mdg_search({
 
 // Use flat when you genuinely need all hits with equal weight (e.g.
 // reviewing every TODO before a release).
-mdg_search({
+mpg_search({
   pattern: "TODO|FIXME",
   in: ["src/"],
   effort: "normal",
@@ -354,12 +354,12 @@ When to link (and what edge types to use):
 
 | Edge type | Meaning | Example |
 | :--- | :--- | :--- |
-| `depends-on` | "B is a precondition for understanding A" | `mdg --mp-link auth-rewrite db-schema depends-on "new tables back the migration"` |
-| `supersedes` | "A is the current view; B is the old one" | `mdg --mp-link auth-v2 auth-v1 supersedes "post-rewrite, ignore v1"` |
-| `see-also` | "B is a related thread you'll want when reading A" | `mdg --mp-link rate-limit-impl rate-limit-docs see-also "implementation ↔ design"` |
-| `parent-of` / `child-of` | Subtopics of a larger investigation | `mdg --mp-link epic-payments stripe-webhooks parent-of "webhook handling is part of payments"` |
-| `blocks` | "A can't ship without resolving B" | `mdg --mp-link release-v3 schema-migration blocks "must run migration first"` |
-| `contradicts` | "A and B disagree — needs reconciliation" | `mdg --mp-link spec-claim impl-reality contradicts "spec says X, code does Y"` |
+| `depends-on` | "B is a precondition for understanding A" | `mpg --mp-link auth-rewrite db-schema depends-on "new tables back the migration"` |
+| `supersedes` | "A is the current view; B is the old one" | `mpg --mp-link auth-v2 auth-v1 supersedes "post-rewrite, ignore v1"` |
+| `see-also` | "B is a related thread you'll want when reading A" | `mpg --mp-link rate-limit-impl rate-limit-docs see-also "implementation ↔ design"` |
+| `parent-of` / `child-of` | Subtopics of a larger investigation | `mpg --mp-link epic-payments stripe-webhooks parent-of "webhook handling is part of payments"` |
+| `blocks` | "A can't ship without resolving B" | `mpg --mp-link release-v3 schema-migration blocks "must run migration first"` |
+| `contradicts` | "A and B disagree — needs reconciliation" | `mpg --mp-link spec-claim impl-reality contradicts "spec says X, code does Y"` |
 
 Edge types are conventional strings, not enforced — pick any
 vocabulary, but stay consistent within one investigation.
@@ -368,17 +368,17 @@ Typical workflow:
 
 ```bash
 # 1. Build stashes as you investigate, with consistent tags
-mdg "JWT" --in src/auth/  --mp-stash auth-jwt   --mp-tag rewrite --mp-ttl 24h
-mdg "JWT" --in docs/spec/ --mp-stash spec-jwt   --mp-tag rewrite --mp-ttl 24h
-mdg "JWT" --in src/legacy/ --mp-stash legacy-jwt --mp-tag rewrite --mp-ttl 24h
+mpg "JWT" --in src/auth/  --mp-stash auth-jwt   --mp-tag rewrite --mp-ttl 24h
+mpg "JWT" --in docs/spec/ --mp-stash spec-jwt   --mp-tag rewrite --mp-ttl 24h
+mpg "JWT" --in src/legacy/ --mp-stash legacy-jwt --mp-tag rewrite --mp-ttl 24h
 
 # 2. Link them as you discover relationships
-mdg --mp-link auth-jwt spec-jwt see-also "implementation of the spec"
-mdg --mp-link auth-jwt legacy-jwt supersedes "post-rewrite, legacy goes away"
+mpg --mp-link auth-jwt spec-jwt see-also "implementation of the spec"
+mpg --mp-link auth-jwt legacy-jwt supersedes "post-rewrite, legacy goes away"
 
 # 3. Next session: navigate by intent, not by name
-mdg --mp-related auth-jwt           # show neighbors + edge labels
-mdg --mp-graph auth-jwt 2           # BFS two hops out
+mpg --mp-related auth-jwt           # show neighbors + edge labels
+mpg --mp-graph auth-jwt 2           # BFS two hops out
 ```
 
 Rules of thumb:
@@ -394,10 +394,10 @@ Rules of thumb:
    and stick to it; rename via unlink/relink if you change your mind.
 4. **`--mp-graph` is your "context resurrection" tool.** When a
    conversation gets compacted away and you need to rebuild the
-   thread, `mdg --mp-graph <root> 3` reconstructs the investigation
+   thread, `mpg --mp-graph <root> 3` reconstructs the investigation
    topology in one CLI call.
 5. **Don't link across unrelated tasks.** If you're disciplined about
-   one palace per task (`MDG_MIND_PALACE=.mdg/<task>.json`), this is
+   one palace per task (`MPG_MIND_PALACE=.mpg/<task>.json`), this is
    automatic — cross-task links can't even be expressed.
 
 The full set of graph operations is CLI-only (not MCP yet) —
@@ -450,11 +450,11 @@ deciding whether to re-search vs recall:
 
 | Tool | Required params | Optional |
 | :--- | :--- | :--- |
-| `mdg_search` | `pattern` | `in[]`, `cmd`, `url`, `before`, `after`, `max_nodes`, `max_tokens`, `effort` (scan/quick/normal/deep), `strategy`, `from`, `compose[]`, `page`, `page_size`, `all`, **`clip_chars`** (sub-line snippet N), **`fuzzy`** (typo-tolerant), **`sort`** ("recent"/"oldest"/"default"), **`window_curve`** ("flat"/"linear"/"log") |
-| `mdg_stash` | `name` | `note`, `tags[]`, `replace` |
-| `mdg_list_stashes` | — | `tag_filter[]`, `page`, `page_size` |
-| `mdg_get_stash` | `name` | `with_nodes` (default false — card view; pass `true` for full nodes), `page`, `page_size` (only honored with `with_nodes: true`) |
-| `mdg_drop_stash` | `name` | — |
+| `mpg_search` | `pattern` | `in[]`, `cmd`, `url`, `before`, `after`, `max_nodes`, `max_tokens`, `effort` (scan/quick/normal/deep), `strategy`, `from`, `compose[]`, `page`, `page_size`, `all`, **`clip_chars`** (sub-line snippet N), **`fuzzy`** (typo-tolerant), **`sort`** ("recent"/"oldest"/"default"), **`window_curve`** ("flat"/"linear"/"log") |
+| `mpg_stash` | `name` | `note`, `tags[]`, `replace` |
+| `mpg_list_stashes` | — | `tag_filter[]`, `page`, `page_size` |
+| `mpg_get_stash` | `name` | `with_nodes` (default false — card view; pass `true` for full nodes), `page`, `page_size` (only honored with `with_nodes: true`) |
+| `mpg_drop_stash` | `name` | — |
 
 The mind palace has a *wider* surface than the five MCP tools above
 (relationships, pruning, TTL, intersect/except, isolated palaces).
@@ -466,33 +466,33 @@ Those are CLI-only today — see `references/mind-palace.md`.
 2. **Tag every stash.** `auth`, `p0`, `scan`, `finding`, `review` — pays off at >10 stashes and makes `--mp-prune-tag` trivial.
 3. **Compose before concluding.** Set-union across two stashes catches cross-cutting evidence one search would miss. Re-reading is ~3× more expensive than `--mp-from` over the same files.
 4. **Prune actively, not eventually.** Run `--mp-prune-expired` at session start and `--mp-prune-tag scan` (or `--mp-prune-keep 30`) between major phases. Always `--mp-prune-dry-run` first.
-5. **One palace per task.** Pass `--mp-path` or set `MDG_MIND_PALACE` per task to keep contexts isolated. Cross-task palaces bleed and waste tokens.
+5. **One palace per task.** Pass `--mp-path` or set `MPG_MIND_PALACE` per task to keep contexts isolated. Cross-task palaces bleed and waste tokens.
 6. **Page large results.** Pass `page: 1, page_size: 5` for searches with >10 expected hits; check `pagination.has_next`.
 7. **Read `errors[]` even when `status === "ok"`.** A `"partial"` status means some sources errored — the result is real but incomplete. Decide if the missing sources mattered before concluding.
 
 ## Pagination pattern
 
 ```
-Start:  mdg_search(pattern, page: 1, page_size: 5)
+Start:  mpg_search(pattern, page: 1, page_size: 5)
 Check:  result.pagination.has_next
-If yes: mdg_search(pattern, page: 2, page_size: 5)
+If yes: mpg_search(pattern, page: 2, page_size: 5)
 Stop when has_next is false or you have enough context.
 ```
 
-Same pattern for `mdg_list_stashes` and `mdg_get_stash`.
+Same pattern for `mpg_list_stashes` and `mpg_get_stash`.
 
 ## Error recovery
 
 | Condition | What to do |
 | :--- | :--- |
 | `status: "no_matches"` | Broaden pattern, drop `-w`, add `-I` (case-insensitive). |
-| `status: "truncated"` | Hit `--max-tokens`. Narrow pattern OR increase budget. If you stash truncated results, the stash inherits the same partial node set — the search-level truncation marker is the only signal, and the `mdg: created stash …` line does not restate it. When stashing for archival purposes, drop `--max-tokens` or raise it well above the expected hit count so the stash is complete. |
+| `status: "truncated"` | Hit `--max-tokens`. Narrow pattern OR increase budget. If you stash truncated results, the stash inherits the same partial node set — the search-level truncation marker is the only signal, and the `mpg: created stash …` line does not restate it. When stashing for archival purposes, drop `--max-tokens` or raise it well above the expected hit count so the stash is complete. |
 | `status: "partial"` | Some sources errored, others returned matches. Inspect `result.errors[]` — decide whether the missing sources mattered. Common cause: a single pathological file (minified asset) that you can `--exclude`. |
-| `status: "error"` | All sources errored. Check `result.errors[]` and stderr. Common: unknown stash name (`mdg_list_stashes`), rg not installed, bad regex. |
-| Unknown stash | Run `mdg_list_stashes` to discover. |
+| `status: "error"` | All sources errored. Check `result.errors[]` and stderr. Common: unknown stash name (`mpg_list_stashes`), rg not installed, bad regex. |
+| Unknown stash | Run `mpg_list_stashes` to discover. |
 | `pagination.has_next` | More data exists. Decide if current page is enough. |
 | `--mp-from` returns nothing | Stashed files may have moved or been deleted. Re-stash fresh. |
-| `WARNING — mind palace is corrupt` on stderr | mdg copied the bad file aside as `<palace>.corrupt.<ts>` and is refusing to save. Inspect the backup, then either fix it by hand or set `MDG_FORCE_RESET=1` to start fresh. **Do not** plow on without reading the backup — you will lose every stash. |
+| `WARNING — mind palace is corrupt` on stderr | mpg copied the bad file aside as `<palace>.corrupt.<ts>` and is refusing to save. Inspect the backup, then either fix it by hand or set `MPG_FORCE_RESET=1` to start fresh. **Do not** plow on without reading the backup — you will lose every stash. |
 
 ## Long-context backoff workflow
 
@@ -504,7 +504,7 @@ The shape of a long-horizon task:
 
 | Phase | What to do |
 | :--- | :--- |
-| **Open** | At session start, `mdg --mp-prune-expired` to clear stashes whose TTL passed. Optional `--mp-prune-older-than 24h` if the previous session left scratch. |
+| **Open** | At session start, `mpg --mp-prune-expired` to clear stashes whose TTL passed. Optional `--mp-prune-older-than 24h` if the previous session left scratch. |
 | **Explore** | Use `effort: "scan", clip_chars: 30, sort: "recent"` to build a cheap first-touch index. **Always** stash these scan results with a TTL: `--mp-ttl 4h`, tags like `scan` and the topic. The TTL is the auto-cleanup; without it, scan-stashes accumulate. |
 | **Drill** | `--mp-from <scan-stash>` to re-scope a deeper search to just the files the scan flagged. Stash these too, but with a longer TTL (`--mp-ttl 24h`) and an unambiguous topic tag — these are findings, not scratch. |
 | **Synthesize** | Before answering, `--mp-compose <finding-a> <finding-b>` to feed the union back as the search target. Saves you re-reading the source — the stashed nodes are already token-budgeted. For "what's the intersection of two threads?" use `--mp-intersect`. |
@@ -517,7 +517,7 @@ Concrete budget targets that work:
 - TTLs that match the work cadence: `4h` for scan-and-discard scratch,
   `24h` for findings you might revisit tomorrow, no TTL for
   cross-session canonical context.
-- One palace per major task (`MDG_MIND_PALACE=.mdg/<task-id>.json`).
+- One palace per major task (`MPG_MIND_PALACE=.mpg/<task-id>.json`).
   Don't mix unrelated tasks — context bleed wastes more tokens than
   isolated palaces save.
 
@@ -533,15 +533,15 @@ at the synthesis step.
 
 Headline numbers from `BENCHMARKS.md` (oasis-sleek conductor tracks corpus — markdown specs + JSON metadata):
 
-| comparison | mdg config | result |
+| comparison | mpg config | result |
 | :--- | :--- | :--- |
 | Literal recall vs **ripgrep** | `scan + clip_chars: 30` | 100% / 100% / **377 tokens** vs rg's 1197 — **3.2× cheaper than rg** |
 | Typo recovery | `fuzzy: true` | 100% recall vs rg's 0%, 89% precision, ~1900 tokens. Embeddings get 45% at 23,610 tokens. |
 | Compaction at fixed budget | `scan + clip + max_tokens` (no LLM) | 67% pass beats LLM summarization (33%) at zero LLM cost |
-| Multi-turn convergence | treatment uses mdg + stash | 24% fewer input tokens, **half the tool calls and turns** vs control |
+| Multi-turn convergence | treatment uses mpg + stash | 24% fewer input tokens, **half the tool calls and turns** vs control |
 | Mind palace set semantics | `compose` / `intersect` / `except` / graph | 17/17 micro assertions pass |
 
-Where mdg loses on the bench (worth knowing):
+Where mpg loses on the bench (worth knowing):
 - **Single-keyword lookups** where you only need a file:line list (T2 BLAKE3, T3 load_to_bevy in macro): rg is cheaper. Use `bash`/`grep` for one-word answers.
 - **Cold-start wall-clock**: ~200ms per CLI call. MCP server / programmatic import avoid this (the cost is paid once at boot).
 

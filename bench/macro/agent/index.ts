@@ -5,8 +5,8 @@
  *
  * Two arms:
  *   control   — read / grep / write / bash
- *   treatment — control tools + mdg_search / mdg_stash / mdg_list_stashes /
- *               mdg_get_stash / mdg_drop_stash
+ *   treatment — control tools + mpg_search / mpg_stash / mpg_list_stashes /
+ *               mpg_get_stash / mpg_drop_stash
  *
  * Usage:
  *   import { runAgent, type RunOptions, type RunOutput } from "./agent/index.js";
@@ -28,8 +28,8 @@ import {
 
 /**
  * Provider selection:
- *   MDG_BENCH_PROVIDER=anthropic (default) — uses Anthropic SDK + Haiku 4.5.
- *   MDG_BENCH_PROVIDER=openrouter         — uses OpenAI SDK against OpenRouter,
+ *   MPG_BENCH_PROVIDER=anthropic (default) — uses Anthropic SDK + Haiku 4.5.
+ *   MPG_BENCH_PROVIDER=openrouter         — uses OpenAI SDK against OpenRouter,
  *                                            default model DeepSeek V4 Pro.
  *
  * OpenRouter avoids our Anthropic org rate limit (50k input tokens/min
@@ -38,7 +38,7 @@ import {
  */
 type Provider = "anthropic" | "openrouter";
 function pickProvider(): Provider {
-  const v = (process.env.MDG_BENCH_PROVIDER ?? "anthropic").toLowerCase();
+  const v = (process.env.MPG_BENCH_PROVIDER ?? "anthropic").toLowerCase();
   return v === "openrouter" ? "openrouter" : "anthropic";
 }
 
@@ -49,24 +49,24 @@ export type Arm = "control" | "treatment";
 export interface RunOptions {
   /** The task prompt sent as the first user message. */
   taskPrompt: string;
-  /** Which arm to run: control (baseline) or treatment (+ mdg tools). */
+  /** Which arm to run: control (baseline) or treatment (+ mpg tools). */
   arm: Arm;
   /** Maximum conversation turns before stopping. Default: 20. */
   maxTurns?: number;
   /** Stop if cumulative input tokens reach this limit. Default: 50 000. */
   maxInputTokens?: number;
   /**
-   * Model ID to use. Default: process.env.MDG_BENCH_MODEL ?? "claude-haiku-4-5-20251001".
+   * Model ID to use. Default: process.env.MPG_BENCH_MODEL ?? "claude-haiku-4-5-20251001".
    */
   modelId?: string;
   /**
    * Treatment arm only: path to an isolated mind-palace file for this task.
    * Pass a unique tmp path per task to prevent cross-task pollution.
-   * If omitted, mdg uses its default palace path.
+   * If omitted, mpg uses its default palace path.
    */
   palacePath?: string;
   /**
-   * Working directory for tool execution (read/grep/write/bash and mdg CLI).
+   * Working directory for tool execution (read/grep/write/bash and mpg CLI).
    * Default: repo root (resolved from this file's location).
    */
   cwd?: string;
@@ -99,7 +99,7 @@ export interface RunOutput {
 const DEFAULT_MAX_TURNS = 20;
 const DEFAULT_MAX_INPUT_TOKENS = 50_000;
 const DEFAULT_MODEL =
-  process.env["MDG_BENCH_MODEL"] ?? "claude-haiku-4-5-20251001";
+  process.env["MPG_BENCH_MODEL"] ?? "claude-haiku-4-5-20251001";
 
 const __filename = fileURLToPath(import.meta.url);
 // bench/macro/agent -> bench/macro -> bench -> repo root
@@ -112,7 +112,7 @@ const REPO_ROOT = resolve(dirname(__filename), "..", "..", "..");
 // result and nothing else" which the model interpreted as "skip
 // structured output and just say done." That collision dropped multi-
 // turn pass-rate to 0% even though the agent converged in half the
-// turns with mdg. Compaction's mdg-agent arm hit the same wall (15-
+// turns with mpg. Compaction's mpg-agent arm hit the same wall (15-
 // token "compaction generated" instead of the actual compaction).
 //
 // New rule: brevity applies to PROSE around the answer, not to the
@@ -133,31 +133,31 @@ ${ANSWER_FORMAT_BLOCK}`;
 const TREATMENT_SYSTEM_PROMPT = `You are a precise engineering assistant running inside an automated benchmark.
 
 THE LENS MENTAL MODEL
-mdg is a single LENS over the corpus with no boundaries between files. You set:
+mpg is a single LENS over the corpus with no boundaries between files. You set:
   - the matches (focal points) via the pattern,
   - the depth at each focal point (effort / clip_chars / before / after / window_curve),
   - and the surface (in: paths, sort by recency, paginate).
 
-You don't pick between "grep this" and "read that" — you adjust the lens. With the right flags, one mdg_search call replaces what would otherwise be 1-N grep + read combos.
+You don't pick between "grep this" and "read that" — you adjust the lens. With the right flags, one mpg_search call replaces what would otherwise be 1-N grep + read combos.
 
-WHEN mdg IS THE RIGHT LENS SETTING
+WHEN mpg IS THE RIGHT LENS SETTING
   - You need windowed context around matches (effort: "quick" / "normal" / "deep").
   - You're investigating a topic across multiple files and want results sorted/sized by mtime, recency, or a token budget (sort, max_tokens, window_curve).
   - The term might be misspelled (fuzzy: true).
-  - You want to remember a result for later turns (mdg_stash, then mdg_search with from: "<name>").
+  - You want to remember a result for later turns (mpg_stash, then mpg_search with from: "<name>").
   - You want one tool call that replaces grep-then-read-then-grep again.
 
 WHEN bash/grep/read ARE FINE
-  - A single-word lookup where you just need file:line — bash 'grep -rn TERM .' is cheaper than mdg's CLI cold-start.
+  - A single-word lookup where you just need file:line — bash 'grep -rn TERM .' is cheaper than mpg's CLI cold-start.
   - You already know the exact file and want to read it end-to-end — use 'read'.
   - You need to write a file or run a shell command — use 'write' or 'bash'.
 
-MDG TOOLS
-  - mdg_search: read the schema. effort / clip_chars / sort / window_curve / fuzzy / max_tokens / page / page_size / from / compose are how you shape the lens.
-  - mdg_stash: save a search's results under a name+tags for re-use this turn or later.
-  - mdg_list_stashes / mdg_get_stash / mdg_drop_stash: inspect/manage stashes.
+MPG TOOLS
+  - mpg_search: read the schema. effort / clip_chars / sort / window_curve / fuzzy / max_tokens / page / page_size / from / compose are how you shape the lens.
+  - mpg_stash: save a search's results under a name+tags for re-use this turn or later.
+  - mpg_list_stashes / mpg_get_stash / mpg_drop_stash: inspect/manage stashes.
 
-Pick the tool that fits the question. Don't pre-stash if you won't reuse. Don't reach for mdg if grep is one line and you only need one match.
+Pick the tool that fits the question. Don't pre-stash if you won't reuse. Don't reach for mpg if grep is one line and you only need one match.
 
 ${ANSWER_FORMAT_BLOCK}`;
 

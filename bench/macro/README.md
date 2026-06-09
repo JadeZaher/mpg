@@ -1,14 +1,14 @@
 # Macro — agent task lift
 
 The only tier that measures the actual product question: **does an agent
-with mdg tools complete tasks at lower token cost than the same agent
-without them?** On the workload that matches mdg's pitch.
+with mpg tools complete tasks at lower token cost than the same agent
+without them?** On the workload that matches mpg's pitch.
 
 ## The workload (matters)
 
-The conversational tier showed mdg ties rg on JSONL. That's a fair
+The conversational tier showed mpg ties rg on JSONL. That's a fair
 result on rg's home turf. The macro tier instead runs on a **code +
-specs** corpus — the workload mdg was actually designed for:
+specs** corpus — the workload mpg was actually designed for:
 
 - Long-form source code (line-based, where context windows matter)
 - Long-form design docs / specs (where matches need surrounding prose to answer)
@@ -28,16 +28,16 @@ the asset pipeline hashing scheme defined?"
 
 ## The hypothesis
 
-The treatment-arm agent uses mdg to retrieve small, paginated,
+The treatment-arm agent uses mpg to retrieve small, paginated,
 token-budgeted nodes. The control-arm agent has only `read`, `grep`,
 `write`, `bash`. On the same code+specs corpus, treatment should:
 
 - Answer at least as many tasks correctly (pass-rate at parity or better)
-- Spend **fewer input tokens** doing it (mdg's budget caps prevent
+- Spend **fewer input tokens** doing it (mpg's budget caps prevent
   the "read whole 940-line plan to answer one keyword question" pattern)
 
 If treatment matches control on pass-rate at meaningfully lower input
-tokens, mdg's value proposition is validated.
+tokens, mpg's value proposition is validated.
 
 ## What's measured
 
@@ -46,7 +46,7 @@ tokens, mdg's value proposition is validated.
 | `pass_rate` per arm | Did the answer contain the expected phrases? |
 | `mean_input_tokens` | The dominant cost in agent runs |
 | `mean_output_tokens` | Secondary cost; reveals reasoning verbosity |
-| `mean_tool_calls` | Did mdg let the agent ask fewer, sharper questions? |
+| `mean_tool_calls` | Did mpg let the agent ask fewer, sharper questions? |
 | `mean_turns` | Did the agent converge faster? |
 | `mean_ms` | Wall-clock, mostly informational |
 | **lift** = treatment − control | The headline number |
@@ -77,7 +77,7 @@ Without an API key, the bench writes a `status: "skipped"` record and
 exits 0 — safe to keep in `npm run bench`.
 
 Budget guards per run: ≤20 turns, ≤50,000 input tokens, model defaults
-to `claude-haiku-4-5-20251001` (override via `MDG_BENCH_MODEL`).
+to `claude-haiku-4-5-20251001` (override via `MPG_BENCH_MODEL`).
 
 ## What success looks like
 
@@ -90,12 +90,12 @@ A defensible pass-rate parity with negative input-token lift, e.g.:
 lift: pass-rate +0%, input tokens −63%
 ```
 
-That's the number that justifies adopting mdg as default working memory
+That's the number that justifies adopting mpg as default working memory
 for code-browsing agents.
 
 ## What this bench does NOT measure (and what would)
 
-- **Multi-session memory recall**: tasks are single-turn. mdg's mind
+- **Multi-session memory recall**: tasks are single-turn. mpg's mind
   palace persists, but here we don't validate that an agent that
   stashed during turn N benefits in turn N+10. Adapting LoCoMo /
   LongMemEval is the right next step.

@@ -1,12 +1,12 @@
 /**
- * Programmatic API for mdg.
+ * Programmatic API for mpg.
  *
  * This is the surface an LLM harness should embed against instead of
  * shelling out to the CLI. It exposes the same operations the CLI
  * does, but as async functions returning structured data.
  *
  * The CLI is a thin wrapper over this module. Conversely, this module
- * is what powers `mdg search`, `mdg stash`, etc. for in-process use.
+ * is what powers `mpg search`, `mpg stash`, etc. for in-process use.
  */
 
 import { closeSync, openSync, readSync, statSync } from "node:fs";
@@ -90,7 +90,7 @@ export interface SearchOptions {
   /**
    * Disable the wide-record auto-tune. By default, when the sources
    * being searched have a median line length over ~500 chars (typical
-   * of JSONL event streams), mdg drops `before`/`after` to 0 so each
+   * of JSONL event streams), mpg drops `before`/`after` to 0 so each
    * node is just the matched line. Set this to `true` to keep the
    * effort-preset windowing regardless of corpus shape.
    */
@@ -184,7 +184,7 @@ export interface StashOptions {
   palacePath?: string;
   /**
    * Auto-expire this stash after the given duration (e.g. "1h", "7d").
-   * Pruned automatically by `mdg --mp-prune-expired`. Default: no expiry.
+   * Pruned automatically by `mpg --mp-prune-expired`. Default: no expiry.
    */
   ttl?: string;
   /**
@@ -456,7 +456,7 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
   // Parallelism = min(resolved.length, RG_CONCURRENCY).
   const RG_CONCURRENCY = Math.max(
     1,
-    parseInt(process.env.MDG_RG_CONCURRENCY ?? "4", 10) || 4,
+    parseInt(process.env.MPG_RG_CONCURRENCY ?? "4", 10) || 4,
   );
   const allNodes: Node[] = [];
   // Track which file paths we've already attributed a node to so a
@@ -729,7 +729,7 @@ export const claudeTools = [
   {
     type: "function" as const,
     function: {
-      name: "mdg_search",
+      name: "mpg_search",
       description:
         "Search code, markdown, command output, and URLs for a regex " +
         "pattern. Returns token-budgeted context nodes with file:line " +
@@ -742,12 +742,12 @@ export const claudeTools = [
   {
     type: "function" as const,
     function: {
-      name: "mdg_stash",
+      name: "mpg_stash",
       description:
         "Save the result of a search into a named mind-palace slot " +
         "(the LLM's instantiable short-term memory). Stashed slots can " +
-        "be used as search targets via mdg_search(from:name) or " +
-        "mdg_search(compose:[a,b]). Merges by default (dedup by file:line); " +
+        "be used as search targets via mpg_search(from:name) or " +
+        "mpg_search(compose:[a,b]). Merges by default (dedup by file:line); " +
         "pass replace:true to overwrite.",
       parameters: STASH_PARAMS,
     },
@@ -755,7 +755,7 @@ export const claudeTools = [
   {
     type: "function" as const,
     function: {
-      name: "mdg_list_stashes",
+      name: "mpg_list_stashes",
       description:
         "List all named memory slots in the mind palace. Optionally " +
         "filter by tag. Use this to see what you've stashed before deciding " +
@@ -776,11 +776,11 @@ export const claudeTools = [
   {
     type: "function" as const,
     function: {
-      name: "mdg_get_stash",
+      name: "mpg_get_stash",
       description:
         "Show a single mind-palace slot. Returns the CARD VIEW by default: " +
         "the synthesized intel an agent almost always wants — note, tags, " +
-        "search provenance, source paths (passable as mdg_search 'from'), " +
+        "search provenance, source paths (passable as mpg_search 'from'), " +
         "relations, and node/source counts. The captured node bodies are " +
         "omitted (5–6× cheaper). Pass with_nodes:true to include the full " +
         "stashed nodes block; pagination only applies in that mode.",
@@ -805,7 +805,7 @@ export const claudeTools = [
   {
     type: "function" as const,
     function: {
-      name: "mdg_drop_stash",
+      name: "mpg_drop_stash",
       description:
         "Remove a slot from the mind palace. Use this to free memory when " +
         "a line of investigation is complete. Dropped stashes are gone " +
@@ -831,11 +831,11 @@ export const geminiTools = claudeTools.map((t) => ({
 
 /** Legacy: single-tool definition for OpenAI-compatible APIs. */
 export const toolDefinition = {
-  name: "mdg",
+  name: "mpg",
   description:
     "Search code, markdown, command output, and URLs. " +
-    "Use mdg_list_stashes first to see available memory slots, " +
-    "then mdg_search to find content, and mdg_stash to save results.",
+    "Use mpg_list_stashes first to see available memory slots, " +
+    "then mpg_search to find content, and mpg_stash to save results.",
   parameters: {
     type: "object" as const,
     properties: {

@@ -6,7 +6,7 @@ Real memory-system content. Markdown specifications, JSON metadata,
 and supporting design docs — exactly what mem0, Letta, Anthropic's
 Claude memory tool, or a bespoke memory layer would actually store.
 
-mdg is **memory-system-independent**: it doesn't care which system
+mpg is **memory-system-independent**: it doesn't care which system
 holds the content, only that the content is markdown/JSON/code-like.
 So we test on what a memory system would store, not on the noisy raw
 transcripts a system has to filter first.
@@ -20,7 +20,7 @@ Default: `C:/Users/atooz/Programming/Projects/oasis-sleek/conductor/tracks/`
   supplementary docs (RUNBOOK, CATALOG, etc.)
 - 72 total content files, ~9.6k lines, ~515 KB
 
-Override with `MDG_BENCH_CORPUS_ROOT=<path>` to point at a different
+Override with `MPG_BENCH_CORPUS_ROOT=<path>` to point at a different
 conductor-style project. The macro and multi-turn tiers use a
 different project (FractalEngine) so we're not over-fitting bench
 findings to one codebase.
@@ -41,7 +41,7 @@ back to file-level recall for the metric.
 
 | Substrate | Why include it |
 | :--- | :--- |
-| **mdg** | The system under test. Returns nodes (file + match line + token-windowed context). |
+| **mpg** | The system under test. Returns nodes (file + match line + token-windowed context). |
 | **ripgrep** (raw) | The fastest plain regex baseline. Returns whole matching lines from each file. |
 | **PowerShell `Select-String`** | The Windows-native baseline an agent would use if `rg` isn't installed. |
 | **vector embeddings** (`Xenova/all-MiniLM-L6-v2`) | Semantic baseline. Per-file cosine. |

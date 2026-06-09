@@ -2,7 +2,7 @@
  * Meso embedding baseline.
  *
  * Same ground-truth queries as recall-vs-budget.ts, but retrieval is
- * vector cosine over file-level embeddings instead of mdg regex search.
+ * vector cosine over file-level embeddings instead of mpg regex search.
  *
  * For each query we ask "which files should be in the answer set?"
  * (file-level granularity, since embeddings don't natively give a
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
         const f1 = recall + precision === 0 ? 0 : (2 * recall * precision) / (recall + precision);
         // "Tokens" for embedding retrieval = the tokens of the docs we'd
         // load into context (the top-k files' raw content). This is the
-        // honest comparable to mdg's --max-tokens budget.
+        // honest comparable to mpg's --max-tokens budget.
         const tokens = hits.reduce((acc, h) => {
           const text = readFileSync(join(corpus, h.id), "utf8");
           return acc + approxTokens(text);

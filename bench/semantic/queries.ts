@@ -7,7 +7,7 @@
  *   is whatever rg finds. Regex substrates win by construction.
  *
  *   semantic: substrates receive DIFFERENT inputs.
- *     - regex substrates (rg, PowerShell, mdg) get `rg_keyword` — a
+ *     - regex substrates (rg, PowerShell, mpg) get `rg_keyword` — a
  *       single distinctive literal that exists in the corpus.
  *     - embedding gets the paraphrased `prompt` — words that don't
  *       appear verbatim in the relevant files.
