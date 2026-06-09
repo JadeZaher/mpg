@@ -13,7 +13,7 @@
  * search engine while supporting arbitrary content types.
  */
 
-import { execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import { Readable } from "node:stream";
@@ -195,18 +195,96 @@ export function resolveCommandSource(cmd: string): ResolvedSource {
   };
 }
 
+/** Cap captured command stdout at 64MB. Past that we truncate with a marker. */
+const COMMAND_OUTPUT_MAX_BYTES = 64 * 1024 * 1024;
+/** Default command timeout — 60s for `git log` etc. is plenty. */
+const COMMAND_TIMEOUT_MS = 60_000;
+
+/**
+ * Capture a shell command's stdout for searching.
+ *
+ * Quoting handled correctly: the command runs through the platform
+ * shell (`bash -c` on POSIX, `cmd /c` on Windows), so `git log
+ * --grep="fix bug"` parses the way the user typed it.
+ *
+ * Output is capped at COMMAND_OUTPUT_MAX_BYTES and the command is
+ * killed after COMMAND_TIMEOUT_MS so a hanging or runaway command
+ * can't lock up the agent harness.
+ */
 export async function captureCommand(cmd: string): Promise<string> {
-  // Use execFile with a shell so the user can pass arbitrary commands.
-  // We split on whitespace for simplicity; if you need shell features
-  // (pipes, redirects) wrap in `bash -c` yourself.
-  const parts = cmd.split(/\s+/).filter(Boolean);
-  if (parts.length === 0) throw new Error("Empty command");
-  const out = execFileSync(parts[0], parts.slice(1), {
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-    stdio: ["ignore", "pipe", "pipe"],
+  const trimmed = cmd.trim();
+  if (!trimmed) throw new Error("Empty command");
+
+  const shell = process.platform === "win32" ? "cmd.exe" : "bash";
+  const shellArgs = process.platform === "win32" ? ["/c", trimmed] : ["-c", trimmed];
+
+  return await new Promise<string>((resolve, reject) => {
+    const proc = spawn(shell, shellArgs, { stdio: ["ignore", "pipe", "pipe"] });
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    let truncated = false;
+    let stderr = "";
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { proc.kill("SIGTERM"); } catch { /* ignore */ }
+      reject(new Error(
+        `Command timed out after ${COMMAND_TIMEOUT_MS}ms: ${trimmed.slice(0, 200)}`,
+      ));
+    }, COMMAND_TIMEOUT_MS);
+
+    proc.stdout!.on("data", (chunk: Buffer) => {
+      if (truncated) return;
+      const remaining = COMMAND_OUTPUT_MAX_BYTES - bytes;
+      if (chunk.length <= remaining) {
+        chunks.push(chunk);
+        bytes += chunk.length;
+        return;
+      }
+      // Take what we can, then signal SIGTERM. Anything after the cap
+      // is silently dropped — we keep a marker so the caller can tell.
+      if (remaining > 0) {
+        chunks.push(chunk.subarray(0, remaining));
+        bytes += remaining;
+      }
+      truncated = true;
+      try { proc.kill("SIGTERM"); } catch { /* ignore */ }
+    });
+
+    proc.stderr!.setEncoding("utf8");
+    proc.stderr!.on("data", (chunk: string) => { stderr += chunk; });
+
+    proc.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    proc.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (truncated) {
+        // Successful path: caller gets the truncated output plus a
+        // marker. We don't reject because partial data is still useful.
+        const out = Buffer.concat(chunks).toString("utf8") +
+          `\n[mdg: command output truncated at ${COMMAND_OUTPUT_MAX_BYTES} bytes]\n`;
+        resolve(out);
+        return;
+      }
+      if (code !== 0 && code !== null) {
+        reject(new Error(
+          `Command exited with code ${code}: ${trimmed.slice(0, 200)}` +
+          (stderr ? `\nstderr: ${stderr.slice(0, 500)}` : ""),
+        ));
+        return;
+      }
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
   });
-  return out;
 }
 
 /** Deprecated: use getStdin() instead to avoid double-reads. */
@@ -214,15 +292,78 @@ export async function captureStdin(): Promise<string> {
   return getStdin();
 }
 
+/** Cap fetched URL body at 16MB — anything larger is a denial-of-context risk. */
+const URL_FETCH_MAX_BYTES = 16 * 1024 * 1024;
+/** Default URL fetch timeout. */
+const URL_FETCH_TIMEOUT_MS = 30_000;
+
 export async function captureUrl(url: string): Promise<string> {
-  const res = await fetch(url, {
-    redirect: "follow",
-    headers: { "user-agent": "mdg/0.1 (+https://github.com/)" },
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), URL_FETCH_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      redirect: "follow",
+      headers: { "user-agent": "mdg/0.2 (+https://github.com/JadeZaher/mdg)" },
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    if ((err as Error).name === "AbortError") {
+      throw new Error(`Fetch of ${url} timed out after ${URL_FETCH_TIMEOUT_MS}ms`);
+    }
+    throw err;
   }
-  return await res.text();
+  try {
+    if (!res.ok) {
+      throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
+    }
+    // Cheap MIME guard — we are searching text. Reject obvious binary
+    // types before we read the body so an LLM can't OOM us by passing
+    // a video URL.
+    const ct = (res.headers.get("content-type") ?? "").toLowerCase();
+    if (ct && !ct.startsWith("text/") && !/json|xml|yaml|javascript|csv|html|markdown/.test(ct)) {
+      throw new Error(
+        `Refusing to fetch non-text content-type "${ct}" from ${url}. ` +
+        `Use a different tool to search binary payloads.`,
+      );
+    }
+    // Content-length pre-check (cheap if the server set it).
+    const clHeader = res.headers.get("content-length");
+    if (clHeader) {
+      const cl = parseInt(clHeader, 10);
+      if (!Number.isNaN(cl) && cl > URL_FETCH_MAX_BYTES) {
+        throw new Error(
+          `Refusing to fetch ${cl} bytes from ${url} (cap: ${URL_FETCH_MAX_BYTES}). ` +
+          `Download manually and search the file.`,
+        );
+      }
+    }
+    // Stream-with-cap. If content-length lied or wasn't set, we still
+    // bail out as soon as we cross the threshold.
+    if (!res.body) return "";
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let out = "";
+    let bytes = 0;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > URL_FETCH_MAX_BYTES) {
+        try { await reader.cancel(); } catch { /* ignore */ }
+        throw new Error(
+          `Fetched body exceeded ${URL_FETCH_MAX_BYTES} bytes from ${url}. ` +
+          `Download manually and search the file.`,
+        );
+      }
+      out += decoder.decode(value, { stream: true });
+    }
+    out += decoder.decode();
+    return out;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function resolveUrlSource(url: string): ResolvedSource {

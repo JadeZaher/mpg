@@ -9,10 +9,10 @@
  * is what powers `mdg search`, `mdg stash`, etc. for in-process use.
  */
 
-import { readFileSync, statSync } from "node:fs";
+import { closeSync, openSync, readSync, statSync } from "node:fs";
 import { applyTotalBudget, applyWindowCurve, buildNode, loadSourceContent } from "./nodes.js";
 import { buildFuzzyRegex, verifyFuzzy } from "./fuzzy.js";
-import { runRg } from "./rg.js";
+import { RgError, runRg } from "./rg.js";
 import {
   captureCommand,
   captureStdin,
@@ -134,8 +134,16 @@ export interface SearchResult {
   pattern: string;
   effort: Effort;
   strategy: Strategy;
-  /** Machine-readable status so LLMs can branch without parsing text. */
-  status: "ok" | "no_matches" | "truncated" | "error";
+  /**
+   * Machine-readable status so LLMs can branch without parsing text.
+   *   - "ok":          matches returned cleanly.
+   *   - "no_matches":  zero matches, all sources searched successfully.
+   *   - "truncated":   matches exceeded budget; partial result.
+   *   - "partial":     at least one source errored but others returned
+   *                    matches. Check `errors[]` for per-source failures.
+   *   - "error":       all sources errored; no usable matches.
+   */
+  status: "ok" | "no_matches" | "truncated" | "partial" | "error";
   total_nodes: number;
   total_tokens: number;
   /** Token count of the actual nodes returned (after pagination). */
@@ -143,6 +151,8 @@ export interface SearchResult {
   sources_count: number;
   truncated: boolean;
   nodes: SearchNode[];
+  /** Per-source errors. Empty array when all sources searched cleanly. */
+  errors: Array<{ source: string; message: string }>;
   duration_ms: number;
   before_tokens: number;
   after_tokens: number;
@@ -172,6 +182,17 @@ export interface StashOptions {
   replace?: boolean;
   /** Palace file path. Defaults to project-scoped. */
   palacePath?: string;
+  /**
+   * Auto-expire this stash after the given duration (e.g. "1h", "7d").
+   * Pruned automatically by `mdg --mp-prune-expired`. Default: no expiry.
+   */
+  ttl?: string;
+  /**
+   * Locations-only stash: drop context_before/match_text/context_after
+   * to keep just (source, line, span). Useful when you only need the
+   * stash for `--mp-from` re-search and don't want to persist body text.
+   */
+  locations?: boolean;
 }
 
 export interface StashResult {
@@ -208,25 +229,56 @@ const EFFORT_DEFAULTS: Record<Effort, { before: number; after: number; maxNodes:
  */
 export const WIDE_RECORD_MEDIAN_THRESHOLD = 500;
 
+/** Per-file sample budget — read only the head, never the whole file. */
+const SAMPLE_BYTES_PER_FILE = 64 * 1024;
+/** Across all sampled files, never exceed this much I/O on auto-tune. */
+const SAMPLE_BYTES_TOTAL = 256 * 1024;
+
 /**
- * Read up to 100 non-empty lines from up to 3 sampled file paths and
- * return the median line length. Used by the wide-record auto-tune.
- * Returns 0 if nothing was sampled (no file inputs, or all reads failed).
+ * Estimate median line length across the first chunk of up to 3 files.
+ * Used by the wide-record auto-tune.
+ *
+ * Bounded I/O: we read at most 64KB per file and at most 256KB total,
+ * regardless of file size. A file whose head contains any NUL byte is
+ * treated as binary and skipped — otherwise a stray .png in a dir spec
+ * would feed garbage into the median.
  */
 export function sampleMedianLineLength(files: string[]): number {
   if (files.length === 0) return 0;
   const lengths: number[] = [];
+  let totalRead = 0;
   for (const f of files.slice(0, 3)) {
+    if (totalRead >= SAMPLE_BYTES_TOTAL) break;
+    let fd = -1;
     try {
       const stat = statSync(f);
-      // Skip huge files — sampling cost would dominate.
-      if (stat.size > 10 * 1024 * 1024) continue;
-      const content = readFileSync(f, "utf8");
-      const lines = content.split(/\r?\n/).slice(0, 100);
+      if (!stat.isFile()) continue;
+      const want = Math.min(
+        SAMPLE_BYTES_PER_FILE,
+        SAMPLE_BYTES_TOTAL - totalRead,
+        Number(stat.size),
+      );
+      if (want <= 0) continue;
+      fd = openSync(f, "r");
+      const buf = Buffer.alloc(want);
+      const n = readSync(fd, buf, 0, want, 0);
+      totalRead += n;
+      // Binary heuristic: a NUL byte in the head means rg won't search
+      // this as text anyway, so it shouldn't influence auto-tune.
+      let binary = false;
+      for (let i = 0; i < Math.min(n, 4096); i++) {
+        if (buf[i] === 0) { binary = true; break; }
+      }
+      if (binary) continue;
+      const text = buf.toString("utf8", 0, n);
+      const lines = text.split(/\r?\n/).slice(0, 100);
       for (const ln of lines) {
         if (ln.length > 0) lengths.push(ln.length);
       }
     } catch { /* skip unreadable files */ }
+    finally {
+      if (fd >= 0) { try { closeSync(fd); } catch { /* ignore */ } }
+    }
   }
   if (lengths.length === 0) return 0;
   lengths.sort((a, b) => a - b);
@@ -306,43 +358,92 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
 
   // Run rg + build nodes.
   const t0 = Date.now();
-  const allNodes: Node[] = [];
-  const seenLines = autoTuneApplied ? new Set<string>() : null;
+  const errors: Array<{ source: string; message: string }> = [];
 
   // Fuzzy: trigram-union regex driver + Levenshtein post-filter (./fuzzy.ts).
   const effectivePattern = opts.fuzzy ? buildFuzzyRegex(opts.pattern) : opts.pattern;
 
-  for (const rs of resolved) {
-    for await (const match of runRg(effectivePattern, rs.source, rs.content, {
-      case_insensitive: opts.rg?.caseInsensitive,
-      word_match: opts.rg?.word,
-      fixed_strings: opts.rg?.fixedStrings,
-      multiline: opts.rg?.multiline,
-      hidden: opts.rg?.hidden,
-      no_ignore: opts.rg?.noIgnore,
-      include_globs: opts.rg?.include,
-      exclude_globs: opts.rg?.exclude,
-      type: opts.rg?.type,
-    })) {
-      if (allNodes.length >= maxNodes) break;
-      if (opts.fuzzy) {
-        if (!verifyFuzzy(match.text, match.match_start, opts.pattern, 2)) continue;
+  const rgOpts = {
+    case_insensitive: opts.rg?.caseInsensitive,
+    word_match: opts.rg?.word,
+    fixed_strings: opts.rg?.fixedStrings,
+    multiline: opts.rg?.multiline,
+    hidden: opts.rg?.hidden,
+    no_ignore: opts.rg?.noIgnore,
+    include_globs: opts.rg?.include,
+    exclude_globs: opts.rg?.exclude,
+    type: opts.rg?.type,
+  };
+
+  // Per-source scan worker. Returns the nodes for that source plus an
+  // optional error. We cache the source content on first match so a
+  // 1000-match file doesn't read from disk 1000 times.
+  async function scanSource(
+    rs: typeof resolved[number],
+    nodeBudget: number,
+  ): Promise<{ nodes: Node[]; error: string | null }> {
+    const out: Node[] = [];
+    let cachedContent: string | null = rs.content;
+    const seenLines = autoTuneApplied ? new Set<string>() : null;
+    try {
+      for await (const match of runRg(effectivePattern, rs.source, rs.content, rgOpts)) {
+        if (out.length >= nodeBudget) break;
+        if (opts.fuzzy) {
+          if (!verifyFuzzy(match.text, match.match_start, opts.pattern, 2)) continue;
+        }
+        if (seenLines) {
+          const key = `${match.source.id}:${match.line}`;
+          if (seenLines.has(key)) continue;
+          seenLines.add(key);
+        }
+        if (cachedContent === null) {
+          cachedContent = loadSourceContent(match.source, null);
+        }
+        const node = buildNode(match, cachedContent, {
+          beforeTokens: before,
+          afterTokens: after,
+          clipChars: opts.clipChars,
+        });
+        out.push(node);
+        if (out.length >= nodeBudget) break;
       }
-      if (seenLines) {
-        const key = `${rs.source.id}:${match.line}`;
-        if (seenLines.has(key)) continue;
-        seenLines.add(key);
+      return { nodes: out, error: null };
+    } catch (err) {
+      const msg = err instanceof RgError
+        ? err.message
+        : `${(err as Error).message}`;
+      return { nodes: out, error: msg };
+    }
+  }
+
+  // Bounded-parallel scan across resolved sources. Each worker still
+  // honors the overall `maxNodes` cap conservatively by partitioning
+  // the budget; we re-truncate after merging to enforce the hard cap.
+  // Parallelism = min(resolved.length, RG_CONCURRENCY).
+  const RG_CONCURRENCY = Math.max(
+    1,
+    parseInt(process.env.MDG_RG_CONCURRENCY ?? "4", 10) || 4,
+  );
+  const allNodes: Node[] = [];
+  for (let i = 0; i < resolved.length; i += RG_CONCURRENCY) {
+    if (allNodes.length >= maxNodes) break;
+    const batch = resolved.slice(i, i + RG_CONCURRENCY);
+    // Each worker gets the remaining budget so a single source can't
+    // monopolize. Conservative upper bound; we re-truncate after merge.
+    const perWorkerBudget = maxNodes;
+    const results = await Promise.all(batch.map((rs) => scanSource(rs, perWorkerBudget)));
+    // Merge in input order to preserve determinism across runs.
+    for (let j = 0; j < batch.length; j++) {
+      const { nodes: workerNodes, error } = results[j];
+      if (error) {
+        errors.push({ source: batch[j].source.id, message: error });
       }
-      const content = loadSourceContent(rs.source, rs.content);
-      const node = buildNode(match, content, {
-        beforeTokens: before,
-        afterTokens: after,
-        clipChars: opts.clipChars,
-      });
-      allNodes.push(node);
+      for (const n of workerNodes) {
+        if (allNodes.length >= maxNodes) break;
+        allNodes.push(n);
+      }
       if (allNodes.length >= maxNodes) break;
     }
-    if (allNodes.length >= maxNodes) break;
   }
 
   // Optional ordering by source file mtime.
@@ -389,9 +490,21 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
 
   const totalTokens = budgeted.reduce((s, n) => s + n.tokens, 0);
   const pageTokens = paged.reduce((s, n) => s + n.tokens, 0);
-  const status: SearchResult["status"] =
-    budgeted.length === 0 ? "no_matches" :
-    truncated ? "truncated" : "ok";
+  // Status: if any source errored, classify by whether anything came
+  // back. Agents branching on `status` will see "partial" / "error"
+  // instead of a misleading "no_matches".
+  let status: SearchResult["status"];
+  if (errors.length > 0 && budgeted.length === 0) {
+    status = "error";
+  } else if (errors.length > 0) {
+    status = "partial";
+  } else if (budgeted.length === 0) {
+    status = "no_matches";
+  } else if (truncated) {
+    status = "truncated";
+  } else {
+    status = "ok";
+  }
 
   return {
     pattern: opts.pattern,
@@ -404,6 +517,7 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
     sources_count: sources.size,
     truncated,
     nodes: paged,
+    errors,
     duration_ms: Date.now() - t0,
     before_tokens: before,
     after_tokens: after,
@@ -439,7 +553,11 @@ export async function stash(result: SearchResult | SearchNode[], opts: StashOpti
     { pattern, effort, sources_count: sources.length },
     sources,
     opts.tags ?? [],
-    { replace: opts.replace ?? false },
+    {
+      replace: opts.replace ?? false,
+      ttl: opts.ttl,
+      locations: opts.locations,
+    },
   );
   savePalace(palacePath, palace);
   return { action, stash: newStash, palace_path: palacePath };

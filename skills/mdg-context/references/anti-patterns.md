@@ -48,9 +48,30 @@ should not have to disambiguate.
 Always preview a prune before committing. Stash mistakes are
 permanent — the JSON is overwritten in place.
 
-**Don't share a high-write palace across concurrent agents.**
-mdg has no file locking; concurrent writes race and lose data. See
-`multi-agent.md` for safer layouts.
+**Don't pound a shared palace with hundreds of near-simultaneous writes.**
+v0.2.4 added a `.lock` + atomic-rename write path, so concurrent
+writers no longer lose data — but they *do* serialize. A swarm of
+agents stashing in tight loops over one palace turns into a
+single-writer queue. For high-write fan-out, give each agent its own
+palace (Layout A in `multi-agent.md`) and compose at the end.
+
+**Don't ignore a "WARNING — mind palace is corrupt" stderr line.**
+When mdg encounters an unparseable palace it copies the file aside as
+`<palace>.corrupt.<timestamp>`, taints the in-memory copy, and
+**refuses to save** for the rest of that process. If you press on
+without inspecting the backup, the next process will start from a
+real empty palace once `MDG_FORCE_RESET=1` is set — you'll lose every
+stash that wasn't already on disk in a parseable state. Read the
+backup file first; recover by hand-merging or by deleting the
+corrupt original.
+
+**Don't ignore `result.errors[]`.**
+When some sources error and others succeed, `status` is `"partial"`
+and the per-source failures land in `errors: [{source, message}]`.
+Treating a partial result as a clean "no matches" leads the agent
+into wrong conclusions about the corpus. Always check the array;
+if it's non-empty, decide explicitly whether to retry, fall back,
+or surface the failure.
 
 **Don't stash without tags.**
 At >10 stashes, untagged ones become impossible to filter or prune.
@@ -59,7 +80,16 @@ Tag every stash with at least one topic word.
 **Don't forget TTL on transient findings.**
 Use `--mp-ttl 2h` (or similar) on scratch / exploratory stashes so
 they auto-reap. Manual pruning at agent shutdown is fine too, but TTL
-is the cheaper default.
+is the cheaper default. Combined with `--mp-prune-expired` at the
+start of a session, this is how a long-running palace stays small
+without manual gardening.
+
+**Don't let the palace grow unbounded across a long-context task.**
+Stash count creep is the silent killer of multi-hour agent loops:
+`--mp-from` over a 200-stash palace gets noisy fast. Set a budget
+(say 20–30 active stashes) and run `--mp-prune-keep 30` or
+`--mp-prune-older-than 6h` every few major turns. Always
+`--mp-prune-dry-run` first.
 
 **Don't build dense relationship graphs you won't traverse.**
 Edges are cheap, but a graph nobody walks is noise. Only `--mp-link`

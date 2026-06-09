@@ -46,7 +46,7 @@ import { buildFuzzyRegex, verifyFuzzy } from "./fuzzy.js";
 import type { Node, ResolvedConfig, Result, Source } from "./types.js";
 import type { Stash } from "./mind-palace.js";
 
-const VERSION = "0.2.3";
+const VERSION = "0.2.4";
 
 // Fuzzy matching is now in ./fuzzy.ts (trigram-union regex + Levenshtein
 // post-filter; handles drop/insert/substitute/swap up to edit distance 2).
@@ -73,21 +73,34 @@ async function main(): Promise<number> {
   }
 
   // 2. Handle --ls / --tree (discovery command).
+  // Stream rg's stdout straight through — `rg --files` on a large
+  // monorepo can far exceed any reasonable buffer cap. Blocking the
+  // event loop on a buffered exec also causes parallel sibling mdg
+  // calls in the same agent turn to time out.
   if (config.ls) {
-    const { execFileSync } = await import("node:child_process");
-    try {
+    const { spawn } = await import("node:child_process");
+    return await new Promise<number>((resolve) => {
       const cwd = process.cwd();
-      const out = execFileSync("rg", ["--files", "--no-messages", cwd], {
-        encoding: "utf8",
-        maxBuffer: 64 * 1024 * 1024,
+      const proc = spawn("rg", ["--files", "--no-messages", cwd], {
+        stdio: ["ignore", "pipe", "pipe"],
       });
-      process.stdout.write(out);
-      return 0;
-    } catch (err: any) {
-      if (err.status === 1) { process.stdout.write(""); return 0; }
-      process.stderr.write(`mdg: ${err.message}\n`);
-      return 3;
-    }
+      proc.stdout.pipe(process.stdout);
+      let stderr = "";
+      proc.stderr.setEncoding("utf8");
+      proc.stderr.on("data", (chunk: string) => { stderr += chunk; });
+      proc.on("error", (err) => {
+        process.stderr.write(`mdg: ${err.message}\n`);
+        resolve(3);
+      });
+      proc.on("close", (code) => {
+        if (code === 0 || code === 1) {
+          resolve(0);
+          return;
+        }
+        process.stderr.write(`mdg: rg --files exited with code ${code}: ${stderr.trim()}\n`);
+        resolve(3);
+      });
+    });
   }
 
   // 3. Handle mind-palace operations that don't require a search.
@@ -286,6 +299,18 @@ async function main(): Promise<number> {
   // the first node per (source, line) and drop duplicates.
   const seenLines = autoTuneApplied ? new Set<string>() : null;
 
+  // Per-source content cache. Without this a 1000-match file becomes
+  // 1000 readFileSync calls of the same content.
+  const contentCache = new Map<string, string>();
+  function getContent(sourceId: string, sourceObj: Source, inline: string | null): string {
+    if (inline !== null) return inline;
+    const hit = contentCache.get(sourceId);
+    if (hit !== undefined) return hit;
+    const loaded = loadSourceContent(sourceObj, null);
+    contentCache.set(sourceId, loaded);
+    return loaded;
+  }
+
   for (const rs of resolved) {
     try {
       const effectivePattern = config.fuzzy
@@ -303,11 +328,11 @@ async function main(): Promise<number> {
           if (!verifyFuzzy(match.text, match.match_start, config.pattern!, 2)) continue;
         }
         if (seenLines) {
-          const key = `${rs.source.id}:${match.line}`;
+          const key = `${match.source.id}:${match.line}`;
           if (seenLines.has(key)) continue;
           seenLines.add(key);
         }
-        const content = loadSourceContent(rs.source, rs.content);
+        const content = getContent(match.source.id, match.source, rs.content);
         const node = buildNode(match, content, {
           beforeTokens,
           afterTokens,

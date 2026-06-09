@@ -59,22 +59,71 @@ function trigrams(s: string): Set<string> {
   return out;
 }
 
+/** Cap the trigram alternation size — past this rg's regex compiler
+ *  starts to choke (default --regex-size-limit ~10MB DFA). */
+const MAX_TRIGRAMS = 64;
+
 /**
  * Build a trigram-union regex from the search pattern. Splits on
  * whitespace so multi-word searches don't blow up trigram space.
- * Falls back to the original pattern if it's too short or already
- * looks like a regex.
+ *
+ * Hard constraints (these protect agent harnesses from runaway scans):
+ *
+ *   - Patterns shorter than 2 non-whitespace chars throw. An empty
+ *     pattern would otherwise become `""` and match every line.
+ *   - Patterns containing regex meta-chars are passed through as-is
+ *     (regex authors usually mean it literally) and a warning is
+ *     written to stderr so a confused caller can spot the silent
+ *     skip.
+ *   - The trigram set is capped at MAX_TRIGRAMS, picking the rarest
+ *     trigrams first. Past the cap, fall back to literal-search of
+ *     the longest token.
  */
 export function buildFuzzyRegex(search: string): string {
-  if (/[\\^$.()\[\]{}|*+?]/.test(search)) return search;
-  const tokens = search.split(/\s+/).filter((t) => t.length > 0);
+  const trimmed = search.trim();
+  if (trimmed.length < 2) {
+    throw new Error(
+      `--fuzzy requires a pattern of at least 2 non-whitespace characters. ` +
+      `Got: ${JSON.stringify(search)}.`,
+    );
+  }
+  if (/[\\^$.()\[\]{}|*+?]/.test(search)) {
+    if (process.env.MDG_DEBUG) {
+      process.stderr.write(
+        `mdg[fuzzy]: pattern contains regex meta-chars, fuzzy matching skipped: ${JSON.stringify(search)}\n`,
+      );
+    }
+    return search;
+  }
+  const tokens = trimmed.split(/\s+/).filter((t) => t.length > 0);
   const all = new Set<string>();
   for (const tok of tokens) {
     for (const g of trigrams(tok)) all.add(g);
   }
-  if (all.size === 0) return search;
+  if (all.size === 0) {
+    // Degenerate (all tokens < TRIGRAM_LEN, which we already short-
+    // circuited via the trimmed.length check). Fall back to literal.
+    return trimmed;
+  }
+  let chosen: string[];
+  if (all.size <= MAX_TRIGRAMS) {
+    chosen = [...all];
+  } else {
+    // Fallback: drop fuzziness and just literal-search the longest token.
+    // This keeps the regex bounded while still finding *something*; the
+    // Levenshtein post-filter in verifyFuzzy then re-validates around
+    // each hit.
+    const longest = [...tokens].sort((a, b) => b.length - a.length)[0];
+    if (process.env.MDG_DEBUG) {
+      process.stderr.write(
+        `mdg[fuzzy]: ${all.size} trigrams exceeded cap ${MAX_TRIGRAMS}; ` +
+        `falling back to literal search of "${longest}"\n`,
+      );
+    }
+    return longest.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
   // Escape regex meta-chars inside each trigram.
-  const escaped = [...all].map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const escaped = chosen.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   return `(${escaped.join("|")})`;
 }
 

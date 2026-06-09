@@ -203,4 +203,12 @@ export interface RgOptions {
   exclude_globs?: string[];
   type?: string;
   glob_case_insensitive?: boolean;
+  /**
+   * Maximum columns rg will emit for a single line. Lines longer than
+   * this are reported via `--max-columns-preview` (rg notes a match
+   * existed but does not emit the megabyte-long body). Defaults to
+   * 1_000_000 — large enough for any sane corpus, small enough that a
+   * minified asset can't blow up the JSON parser.
+   */
+  max_columns?: number;
 }

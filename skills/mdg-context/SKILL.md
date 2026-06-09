@@ -172,12 +172,13 @@ Those are CLI-only today — see `references/mind-palace.md`.
 
 ## Golden rules
 
-1. **Stash by default.** Even if you think you won't reuse it. Stashes are cheap.
-2. **Tag every stash.** `auth`, `p0`, `temp`, `perf`, `review` — pays off at >10 stashes.
-3. **Compose before concluding.** Set-union across two stashes catches cross-cutting evidence one search would miss.
-4. **One palace per task.** Pass `--mp-path` or set `MDG_MIND_PALACE` per task to keep contexts isolated.
-5. **Always dry-run prunes.** `--mp-prune-dry-run` first, commit second.
+1. **Stash by default, with a TTL.** Even if you think you won't reuse it. Stashes are cheap; an unbounded palace is not. `--mp-ttl 4h` on scratch, `--mp-ttl 24h` on findings, no TTL on canonical context.
+2. **Tag every stash.** `auth`, `p0`, `scan`, `finding`, `review` — pays off at >10 stashes and makes `--mp-prune-tag` trivial.
+3. **Compose before concluding.** Set-union across two stashes catches cross-cutting evidence one search would miss. Re-reading is ~3× more expensive than `--mp-from` over the same files.
+4. **Prune actively, not eventually.** Run `--mp-prune-expired` at session start and `--mp-prune-tag scan` (or `--mp-prune-keep 30`) between major phases. Always `--mp-prune-dry-run` first.
+5. **One palace per task.** Pass `--mp-path` or set `MDG_MIND_PALACE` per task to keep contexts isolated. Cross-task palaces bleed and waste tokens.
 6. **Page large results.** Pass `page: 1, page_size: 5` for searches with >10 expected hits; check `pagination.has_next`.
+7. **Read `errors[]` even when `status === "ok"`.** A `"partial"` status means some sources errored — the result is real but incomplete. Decide if the missing sources mattered before concluding.
 
 ## Pagination pattern
 
@@ -196,10 +197,47 @@ Same pattern for `mdg_list_stashes` and `mdg_get_stash`.
 | :--- | :--- |
 | `status: "no_matches"` | Broaden pattern, drop `-w`, add `-I` (case-insensitive). |
 | `status: "truncated"` | Hit `--max-tokens`. Narrow pattern OR increase budget. |
-| `status: "error"` | Check stderr. Common: unknown stash name (`mdg_list_stashes`), rg not installed, bad regex. |
+| `status: "partial"` | Some sources errored, others returned matches. Inspect `result.errors[]` — decide whether the missing sources mattered. Common cause: a single pathological file (minified asset) that you can `--exclude`. |
+| `status: "error"` | All sources errored. Check `result.errors[]` and stderr. Common: unknown stash name (`mdg_list_stashes`), rg not installed, bad regex. |
 | Unknown stash | Run `mdg_list_stashes` to discover. |
 | `pagination.has_next` | More data exists. Decide if current page is enough. |
 | `--mp-from` returns nothing | Stashed files may have moved or been deleted. Re-stash fresh. |
+| `WARNING — mind palace is corrupt` on stderr | mdg copied the bad file aside as `<palace>.corrupt.<ts>` and is refusing to save. Inspect the backup, then either fix it by hand or set `MDG_FORCE_RESET=1` to start fresh. **Do not** plow on without reading the backup — you will lose every stash. |
+
+## Long-context backoff workflow
+
+This is the part that's underused. The mind palace is not just
+storage; it's a **token budget** for the conversation. Treat it
+like working memory with a budget, and prune actively.
+
+The shape of a long-horizon task:
+
+| Phase | What to do |
+| :--- | :--- |
+| **Open** | At session start, `mdg --mp-prune-expired` to clear stashes whose TTL passed. Optional `--mp-prune-older-than 24h` if the previous session left scratch. |
+| **Explore** | Use `effort: "scan", clip_chars: 30, sort: "recent"` to build a cheap first-touch index. **Always** stash these scan results with a TTL: `--mp-ttl 4h`, tags like `scan` and the topic. The TTL is the auto-cleanup; without it, scan-stashes accumulate. |
+| **Drill** | `--mp-from <scan-stash>` to re-scope a deeper search to just the files the scan flagged. Stash these too, but with a longer TTL (`--mp-ttl 24h`) and an unambiguous topic tag — these are findings, not scratch. |
+| **Synthesize** | Before answering, `--mp-compose <finding-a> <finding-b>` to feed the union back as the search target. Saves you re-reading the source — the stashed nodes are already token-budgeted. For "what's the intersection of two threads?" use `--mp-intersect`. |
+| **Close** | `--mp-prune-tag scan` (or whatever scratch tag you used) to drop exploratory clutter. Keep findings. The palace should shrink between sessions, not grow. |
+
+Concrete budget targets that work:
+
+- ≤20 active stashes in a single palace before retrieval becomes
+  noisy.
+- TTLs that match the work cadence: `4h` for scan-and-discard scratch,
+  `24h` for findings you might revisit tomorrow, no TTL for
+  cross-session canonical context.
+- One palace per major task (`MDG_MIND_PALACE=.mdg/<task-id>.json`).
+  Don't mix unrelated tasks — context bleed wastes more tokens than
+  isolated palaces save.
+
+Token math you can quote at the LLM:
+
+> Recomputing a scan is ~1200 rg tokens. Reading the same stash via
+> `--mp-from` is ~377 tokens (3.2× cheaper). Pruning is free.
+
+That ratio is why **prune + compose** beats **re-search** every time
+at the synthesis step.
 
 ## What the bench data says (informs the patterns above)
 

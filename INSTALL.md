@@ -305,7 +305,7 @@ ports, no configuration beyond the `command` and `args` in the MCP config.
 ```bash
 # After installing, verify the agent can find mdg:
 which mdg         # should show the path
-mdg --version     # should print "mdg 0.1.0"
+mdg --version     # should print a current version (e.g. "mdg 0.2.4")
 mdg --ls          # should list files in the current directory
 
 # Quick search test:

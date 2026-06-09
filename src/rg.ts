@@ -6,11 +6,22 @@
  * build context nodes from. This module is the only place that
  * knows about rg's CLI.
  *
- * v1.1: stream-parses rg output line-by-line (no full buffering)
- * and cleans up temp files on SIGINT/SIGTERM.
+ * Defensive posture against pathological input:
+ *   - Pass `--max-columns` so rg refuses to emit megabyte-long
+ *     `lines.text` payloads (minified assets, generated blobs).
+ *     A preview marker still tells us a match existed.
+ *   - Cap the in-memory line buffer. If rg emits a single JSON line
+ *     longer than the cap, we kill the process and throw rather than
+ *     letting V8 string-concat blow up O(n^2).
+ *   - Clip per-Match `text` so a single oversized match line can't
+ *     pin many megabytes into `pendingMatches` once per submatch.
+ *   - Surface JSON parse failures via `MDG_DEBUG` instead of silently
+ *     swallowing them — otherwise a truncated tail line looks like a
+ *     clean "no matches" result.
  */
 
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 import type { Match, RgOptions, Source } from "./types.js";
 
@@ -34,6 +45,15 @@ export class RgNotFoundError extends Error {
   }
 }
 
+/** Hard cap on per-line size we will buffer before bailing out. */
+const MAX_LINE_BUFFER_BYTES = 16 * 1024 * 1024; // 16 MB
+
+/** Default cap on per-line columns rg will emit. */
+const DEFAULT_MAX_COLUMNS = 1_000_000;
+
+/** Hard cap on per-Match.text size we push downstream. */
+const MAX_MATCH_TEXT_CHARS = 16 * 1024; // 16 KB per node's match line
+
 interface RgJsonMatch {
   type: "match";
   data: {
@@ -51,6 +71,12 @@ interface RgJsonMatch {
 
 type RgJsonLine = RgJsonMatch | { type: string; data: unknown };
 
+function debugLog(msg: string): void {
+  if (process.env.MDG_DEBUG) {
+    try { process.stderr.write(`mdg[rg]: ${msg}\n`); } catch { /* ignore */ }
+  }
+}
+
 /**
  * Run ripgrep and yield structured matches as they arrive (streaming).
  */
@@ -61,6 +87,12 @@ export async function* runRg(
   options: RgOptions = {},
 ): AsyncGenerator<Match> {
   const args: string[] = ["--json", "--no-heading", "--no-messages"];
+
+  // Always cap per-line size. rg emits the preview form (still flags
+  // the match, just doesn't ship the body) for oversized lines.
+  const maxColumns = options.max_columns ?? DEFAULT_MAX_COLUMNS;
+  args.push("--max-columns", String(maxColumns));
+  args.push("--max-columns-preview");
 
   if (options.case_insensitive) args.push("-i");
   if (options.word_match) args.push("-w");
@@ -77,29 +109,22 @@ export async function* runRg(
   if (options.type) args.push("--type", options.type);
   if (options.glob_case_insensitive) args.push("--glob-case-insensitive");
 
-  // Search target. Non-file sources go to a temp file.
+  // Search target. Non-file sources go to a temp file with a random
+  // suffix — pid+ms is not enough when callers spawn many rg processes
+  // in the same millisecond.
   let searchTarget: string;
   let cleanup: (() => void) | null = null;
 
   if (sourceContent !== null) {
     const tmpDir = process.env.TMPDIR || process.env.TMP || process.env.TEMP || "/tmp";
     const safeId = source.id.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
-    const tmpPath = resolvePath(tmpDir, `mdg-${process.pid}-${Date.now()}-${safeId}`);
+    const rand = randomBytes(6).toString("hex");
+    const tmpPath = resolvePath(tmpDir, `mdg-${process.pid}-${Date.now()}-${rand}-${safeId}`);
     const { writeFileSync, unlinkSync } = await import("node:fs");
     writeFileSync(tmpPath, sourceContent, "utf8");
     cleanup = () => {
       try { unlinkSync(tmpPath); } catch { /* ignore */ }
     };
-    // Clean up the temp file if the process is killed.
-    const onSignal = () => {
-      if (cleanup) {
-        cleanup();
-        cleanup = null;
-      }
-      process.exit(1);
-    };
-    process.once("SIGINT", onSignal);
-    process.once("SIGTERM", onSignal);
     searchTarget = tmpPath;
   } else {
     searchTarget = source.id;
@@ -120,8 +145,9 @@ export async function* runRg(
   }
 
   // Stream-parse: accumulate chunks, split by newline, process complete
-  // lines as they arrive. This avoids buffering the entire rg output in
-  // memory (which could be 100s of MB for a large monorepo).
+  // lines as they arrive. We track the buffer size so a pathological
+  // single line (e.g. minified asset containing many alternation hits)
+  // can't grow V8's string-concat path into O(n^2) memory.
   let stderr = "";
   if (proc.stderr) {
     proc.stderr.setEncoding("utf8");
@@ -129,21 +155,42 @@ export async function* runRg(
   }
 
   let lineBuffer = "";
+  let bufferOverflow = false;
+  let parseErrors = 0;
   let pendingResolve: (() => void) | null = null;
   const pendingMatches: Match[] = [];
   let streamEnded = false;
+  let aborted = false;
+
+  function clipMatchText(s: string): string {
+    if (s.length <= MAX_MATCH_TEXT_CHARS) return s;
+    const head = MAX_MATCH_TEXT_CHARS - 16;
+    return s.slice(0, head) + "…[clipped]";
+  }
 
   function processLine(line: string) {
     if (!line) return;
     let parsed: RgJsonLine;
     try {
       parsed = JSON.parse(line);
-    } catch {
-      return; // tolerate malformed lines
+    } catch (err) {
+      parseErrors++;
+      debugLog(
+        `JSON.parse failed on line of length ${line.length}: ${(err as Error).message}`,
+      );
+      return;
     }
     if (parsed.type !== "match") return;
     const m = parsed as RgJsonMatch;
-    const txt = stripTrailingNewline(m.data.lines.text);
+    // rg emits `lines.text` as a string when the line fits under
+    // --max-columns. With --max-columns-preview, oversized lines get a
+    // truncated preview but the field is still a string.
+    const rawText = m.data?.lines?.text;
+    if (typeof rawText !== "string") {
+      debugLog(`match record missing lines.text at line ${m.data?.line_number}`);
+      return;
+    }
+    const txt = clipMatchText(stripTrailingNewline(rawText));
     let matchSource: Source;
     if (sourceContent !== null) {
       matchSource = source;
@@ -162,8 +209,25 @@ export async function* runRg(
     }
   }
 
+  function abortProc(reason: string) {
+    if (aborted) return;
+    aborted = true;
+    debugLog(`aborting rg: ${reason}`);
+    try { proc.kill("SIGTERM"); } catch { /* ignore */ }
+  }
+
   proc.stdout!.setEncoding("utf8");
   proc.stdout!.on("data", (chunk: string) => {
+    if (aborted) return;
+    // Guard before any string-concat. If a single line is already
+    // bigger than our cap, kill rg and let the generator surface the
+    // error on close — we never want O(n^2) string-concat growth.
+    if (lineBuffer.length + chunk.length > MAX_LINE_BUFFER_BYTES) {
+      bufferOverflow = true;
+      abortProc(`single line exceeded ${MAX_LINE_BUFFER_BYTES} bytes`);
+      if (pendingResolve) { pendingResolve(); pendingResolve = null; }
+      return;
+    }
     lineBuffer += chunk;
     const lines = lineBuffer.split("\n");
     lineBuffer = lines.pop()!; // keep incomplete last line
@@ -175,8 +239,10 @@ export async function* runRg(
   });
 
   proc.stdout!.on("end", () => {
-    // Process any trailing partial line.
-    if (lineBuffer.trim()) processLine(lineBuffer);
+    // Process any trailing partial line — if we aborted because of
+    // overflow, skip this so we don't try to parse a multi-MB
+    // mid-line buffer.
+    if (!bufferOverflow && lineBuffer.trim()) processLine(lineBuffer);
     streamEnded = true;
     if (pendingResolve) {
       pendingResolve();
@@ -196,7 +262,7 @@ export async function* runRg(
       while (pendingMatches.length > 0) {
         yield pendingMatches.shift()!;
       }
-      if (streamEnded) {
+      if (streamEnded || bufferOverflow) {
         allEmitted = true;
       } else {
         await new Promise<void>((resolve) => {
@@ -207,8 +273,24 @@ export async function* runRg(
   } finally {
     const { code } = await closePromise;
     if (cleanup) cleanup();
+    if (parseErrors > 0) {
+      debugLog(`${parseErrors} JSON line(s) failed to parse during this scan`);
+    }
+    if (bufferOverflow) {
+      throw new RgError(
+        `mdg: a single match line exceeded ${MAX_LINE_BUFFER_BYTES} bytes ` +
+        `for source ${source.id}. This usually means a minified asset or ` +
+        `generated blob — exclude it with --glob '!path' or pass a more ` +
+        `restrictive pattern.`,
+        code,
+        stderr,
+      );
+    }
     // rg exit codes: 0 = matches, 1 = no matches, 2+ = error.
-    if (code !== null && code > 1) {
+    // We treat SIGTERM (null code on POSIX, sometimes propagated as
+    // exit 143 / signal name) as our own abort signal and don't
+    // surface it as a separate error.
+    if (!aborted && code !== null && code > 1) {
       throw new RgError(
         `ripgrep exited with code ${code}: ${stderr.trim() || "unknown error"}`,
         code,
