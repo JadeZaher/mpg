@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.3.2 — README restructure
+
 ## 0.3.1 — Windows-safe subprocess integration
 
 Field-report patch: an agent spawning `mpg` from Node on Windows
