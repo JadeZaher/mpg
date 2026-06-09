@@ -55,12 +55,37 @@ behaviors you can rely on.
    Aider, `~/.continue/config.json` for Continue.dev, `.windsurf/`,
    `.pi/` etc.).
 3. Add a section to it covering the jobs mdg is built for:
-   compaction at zero LLM cost, codebase exploration via
-   scan→stash→drill, multi-thread research via `compose`/`intersect`,
-   long-session memory management via TTL + prune, on-demand file
-   summarization, and cross-stack "does X exist?" checks. The shape
-   of that section is mirrored in the project's own `CLAUDE.md` under
-   the "Use mdg for these recurring jobs" heading — copy it forward.
+   - **Compaction at zero LLM cost** — scan + clip + `max_tokens`
+     instead of a summarization round-trip.
+   - **Codebase exploration via scan → stash → drill** — `effort:
+     "scan"` to inventory, `--mp-from` to drill cheaply on the
+     filtered set.
+   - **Multi-thread research via `compose` / `intersect` / `except`**
+     — set operations on stashed evidence packets.
+   - **Long-session memory management** — TTL on every stash
+     (`--mp-ttl 4h` scratch, `--mp-ttl 24h` findings), prune by tag
+     between phases, one palace per task via `MDG_MIND_PALACE`.
+   - **On-demand file summarization** — `--in <file> --effort deep`
+     for a single file, `--in <dir> --effort scan --clip-chars 30
+     --max-tokens N` for an area.
+   - **Cross-stack "does X exist?"** — `--effort scan --clip-chars 20
+     --json` for the cheapest possible attribution check.
+   - **Filtering opaque tool output / web fetches** — `mdg --cmd
+     "..."` or `mdg --url "..."` to extract only the lines that match
+     a pattern from a long body. This is the highest-leverage move
+     most agent harnesses skip: every `gh run view --log`,
+     `kubectl describe`, verbose CI log, or `WebFetch` body should
+     be routed through `--cmd` or `--url` with a `--max-tokens` cap
+     rather than dumped into context whole. Hard caps protect the
+     agent: `--url` is 16 MB / 30 s with a content-type guard,
+     `--cmd` is 64 MB / 60 s; truncated payloads are returned with a
+     marker, not a hung process.
+
+   The shape of these workflows — with concrete invocations and the
+   behaviors agents can rely on — is mirrored in the project's own
+   `CLAUDE.md` under the "Use mdg for these recurring jobs" heading
+   and `skills/mdg-context/SKILL.md`. Copy them forward; agents reach
+   for what they can see.
 4. Also surface the **tuning knobs** (`MDG_DEBUG`, `MDG_RG_CONCURRENCY`,
    `MDG_FORCE_RESET`, `MDG_MIND_PALACE`) and the **failure channels**
    (`status: "partial"`, `result.errors[]`, the corrupt-palace stderr

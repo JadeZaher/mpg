@@ -177,6 +177,56 @@ mdg --mp-except rate-limit-impl --mp-except-name rate-limit-archived
 
 Use this instead of "let me list both stashes and diff in my head." The set operations are O(stash count), not O(corpus).
 
+**7. Filter opaque tool output / web pages without reading the whole body**
+
+The job mdg does best is **token-budgeting a payload you don't want
+to read in full**. WebFetch on a long doc page, `gh pr view --json`,
+`kubectl describe`, `terraform plan`, `npm ls`, a CI log — these are
+all the same shape: many KB of mostly-irrelevant text wrapping the few
+lines that actually answer the question. Route the source through
+`mdg --cmd "..."` or `mdg --url "..."` instead of dumping the full
+body into context.
+
+```ts
+// WebFetch a doc page, only see the auth section
+mdg_search({
+  pattern: "authentication|auth|token",
+  url: "https://example.com/api/docs",
+  effort: "scan", clip_chars: 50, max_tokens: 1500
+})
+
+// Pull just the failing tests from a verbose CI log
+mdg_search({
+  pattern: "FAIL|✗|error TS",
+  cmd: "gh run view --log 12345",
+  effort: "scan", clip_chars: 80, max_tokens: 2000
+})
+
+// Filter `kubectl describe` to just events / errors
+mdg_search({
+  pattern: "Warning|Error|Failed",
+  cmd: "kubectl describe pod my-pod",
+  effort: "scan", clip_chars: 100
+})
+```
+
+Three rules of thumb:
+
+1. **If a tool output is >3 KB and you only care about 1–2 patterns,
+   route it through mdg.** The wins compound — every avoided
+   full-body read is tokens you can spend on reasoning.
+2. **Stash the filtered result if you'll reference it again.**
+   Filtered tool output is often the cheapest stash you'll ever make.
+   Next turn's `--mp-get` is free.
+3. **Set `max_tokens` explicitly when filtering opaque payloads.**
+   Tool output can spike (thousands of ERROR lines in a log) and the
+   default node caps are sized for code, not for runaway streams.
+
+Hard caps you can rely on so a hostile or runaway source can't drain
+context: `url` is capped at 16 MB and 30 s with a content-type guard;
+`cmd` is capped at 64 MB and 60 s. Past those, mdg returns truncated
+output with a marker — not a hung agent.
+
 ### Behavior you can rely on
 
 These are the load-bearing guarantees worth quoting at yourself before
